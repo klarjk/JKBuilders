@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JKBuilders Manual</title>
+<style>
+  :root{
+    --bg:#fafafa; --panel:#fff; --ink:#1a1a1c; --muted:#666; --line:#e6e6e9;
+    --devloop:#4f46e5; --prp:#0d9488; --memory:#d97706; --other:#64748b;
+    --code-bg:#f4f4f6;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#131316; --panel:#1c1c20; --ink:#ececef; --muted:#9a9aa2; --line:#2c2c32;
+      --devloop:#818cf8; --prp:#2dd4bf; --memory:#fbbf24; --other:#94a3b8;
+      --code-bg:#26262c;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    line-height:1.7; font-size:16px;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:32px 20px 80px}
+  header.top{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px}
+  .lang a{color:var(--muted); text-decoration:none; font-size:14px; padding:4px 10px; border:1px solid var(--line); border-radius:20px}
+  .lang a.active{color:var(--ink); border-color:var(--ink)}
+  h1{font-size:30px; margin:.2em 0 .1em; letter-spacing:-.5px}
+  .sub{color:var(--muted); margin:0 0 28px; font-size:16px}
+  h2{font-size:22px; margin:44px 0 14px; padding-bottom:8px; border-bottom:2px solid var(--line)}
+  h3{font-size:17px; margin:26px 0 8px}
+  p{margin:.5em 0}
+  a{color:var(--devloop)}
+  code{background:var(--code-bg); padding:1px 6px; border-radius:5px; font-size:.88em; font-family:"SF Mono",ui-monospace,Menlo,monospace}
+  pre{background:var(--code-bg); padding:14px 16px; border-radius:10px; overflow-x:auto; font-size:13.5px; line-height:1.6}
+  pre code{background:none; padding:0}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:20px 0}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; border-top:3px solid var(--c)}
+  .card h4{margin:0 0 4px; font-size:15px}
+  .card p{margin:0; font-size:13px; color:var(--muted)}
+  .card .cmd{font-size:12px; color:var(--c); font-weight:600; margin-top:8px; font-family:"SF Mono",ui-monospace,monospace}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:14px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-weight:600; color:var(--muted); font-size:12.5px; text-transform:uppercase; letter-spacing:.4px}
+  td code{white-space:nowrap}
+  .badge{display:inline-block; font-size:11px; padding:1px 7px; border-radius:20px; font-weight:600; white-space:nowrap}
+  .b-ecc{background:color-mix(in srgb,var(--prp) 16%,transparent); color:var(--prp)}
+  .b-prp{background:color-mix(in srgb,var(--prp) 16%,transparent); color:var(--prp)}
+  .b-own{background:color-mix(in srgb,var(--other) 18%,transparent); color:var(--other)}
+  .section{border-left:4px solid var(--c); padding-left:18px; margin:36px 0}
+  .flow{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:14px 0; font-size:13.5px}
+  .flow .step{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 11px; font-weight:600}
+  .flow .arw{color:var(--muted)}
+  .note{background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--memory); border-radius:8px; padding:12px 16px; margin:16px 0; font-size:14px}
+  .note b{color:var(--memory)}
+  ul{margin:.4em 0; padding-left:22px}
+  li{margin:.25em 0}
+  footer{margin-top:60px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="lang">
+    <a href="manual.ko.html">한국어</a>
+    <a class="active" href="manual.en.html">English</a>
+  </div>
+</header>
+
+<h1>JKBuilders Manual</h1>
+<p class="sub">A development workflow collection for Claude Code — one command sets multiple specialist agents collaborating behind the scenes. This document focuses on <b>how you use it</b> and <b>what to watch out for</b>.</p>
+
+<h2>At a glance</h2>
+<p>Four families. Each starts from a single entry command and pulls in the agents it needs on its own.</p>
+<div class="cards">
+  <div class="card" style="--c:var(--devloop)">
+    <h4>/dev-loop family</h4>
+    <p>Multi-session dev orchestration. Plan → design → implement → review, looped per session.</p>
+    <div class="cmd">/dev · /dev-loop · /impl · /adr</div>
+  </div>
+  <div class="card" style="--c:var(--prp)">
+    <h4>/prp family</h4>
+    <p>A one-shot pipeline from requirements → plan → implementation → PR.</p>
+    <div class="cmd">/prp-prd · /prp-plan · /prp-implement · /prp-pr</div>
+  </div>
+  <div class="card" style="--c:var(--memory)">
+    <h4>Memory family</h4>
+    <p>Skills/agents remember what they learned for the next run.</p>
+    <div class="cmd">/add-memory</div>
+  </div>
+  <div class="card" style="--c:var(--other)">
+    <h4>Other</h4>
+    <p>Conditional rule-trigger examples, etc.</p>
+    <div class="cmd">triggers_CLAUDE.md</div>
+  </div>
+</div>
+<p style="font-size:13.5px;color:var(--muted)">
+  Origin badges: <span class="badge b-prp">Wirasm/PRPs-agentic-eng</span>
+  <span class="badge b-ecc">everything-claude-code</span>
+  <span class="badge b-own">original</span>
+</p>
+
+<!-- ── dev-loop family ── -->
+<div class="section" style="--c:var(--devloop)">
+<h2 style="border:none;padding:0;color:var(--devloop)">1. /dev-loop family — multi-session orchestration</h2>
+<p>The core workflow for building a large feature across multiple sessions. It plans, decides the design, and runs implementation, testing, and review in one flow.</p>
+
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Simplest way</b> · Just run <code>/dev-loop</code> followed by <b>one sentence describing what you want to build</b>. e.g. <code>/dev-loop add a user profile editing feature</code>. It takes care of the rest — researches what it needs, makes the design decisions, and drafts an <b>implementation plan sized to the work</b>, then loops through build and review per session.</div>
+
+<h3>How it flows</h3>
+<div class="flow">
+  <span class="step">/dev · plan the work</span><span class="arw">→</span>
+  <span class="step">/adr · design decisions</span><span class="arw">→</span>
+  <span class="step">/impl · build + test + review</span><span class="arw">→</span>
+  <span class="step">/dev-loop · auto-repeat to done</span>
+</div>
+<ul>
+  <li><b>/dev</b> — Builds a development plan (DEV_PLAN) interactively. It scopes research, success criteria, and whether design work is needed, then splits the work into sessions.</li>
+  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that session loop until the plan is complete. Planning/design happen directly; implementation runs in an isolated runner.</li>
+  <li><b>/impl</b> — Takes one feature or refactor and runs the design → plan → build → review agent chain automatically.</li>
+  <li><b>/adr</b> — Records an architecture decision. Easy calls are handled directly; hard ones go to a design + critique convergence agent.</li>
+</ul>
+
+<h3>/impl — the workflow adapts automatically to the size of the work</h3>
+<p>impl first judges the <b>scale</b> of the request, then picks an agent setup to match. It won't wrap a tiny change in heavy process, and it layers design and verification thickly onto big ones.</p>
+<table>
+  <tr><th>Size</th><th>Rough criteria</th><th>Auto-composed workflow</th></tr>
+  <tr><td><b>Small</b></td><td>1–2 files, a few functions, no new structure</td><td>main implements directly → code-reviewer</td></tr>
+  <tr><td><b>Medium</b><br>(no verify)</td><td>3–10 files, but end-to-end e2e is unneeded or impossible</td><td>plan directly → tdd-guide (unit &amp; integration) → code-reviewer</td></tr>
+  <tr><td><b>Medium</b><br>(with verify)</td><td>3–10 files, web-flow e2e verification is meaningful</td><td>planner → tdd-guide → code-reviewer → integration → evaluator → e2e-runner</td></tr>
+  <tr><td><b>Large</b></td><td>10+ files, new module/package, external dependency</td><td>architect <i>or</i> synthesizer (design) → planner (ultra) → tdd-guide → code-reviewer → integration → evaluator → e2e-runner</td></tr>
+</table>
+<ul>
+  <li><b>Large jobs plan in ultra mode</b> — the plan planner produces is split among three reviewers who critique and harden it themselves (not applied below Large).</li>
+  <li><b>Two or more independent work tracks run in parallel automatically</b> — each in its own isolated workspace (worktree).</li>
+  <li>The Large design step depends on change scope — a first-time build or broad boundary changes use <code>synthesizer</code>; internal-only changes to an existing module use <code>architect</code>.</li>
+  <li>If the size is ambiguous, it classifies up.</li>
+</ul>
+<p>Each job (track) also gets a <b>testing approach</b> chosen to fit its nature.</p>
+<table>
+  <tr><th>Approach</th><th>When</th><th>How</th></tr>
+  <tr><td><b>Test-first (BDD)</b></td><td>payments, settlement, money, auth, permissions</td><td>write the test first and watch it fail (RED) → implement (GREEN) → refactor</td></tr>
+  <tr><td><b>Test-after</b></td><td>core user journeys or risky logic (accumulating state like balance/stock/points; boundary math like rounding/dates)</td><td>implement first → cover the happy path plus the error-prone edges with tests</td></tr>
+  <tr><td><b>Skip</b></td><td>simple pass-through, display, config, wiring</td><td>implement only, no tests</td></tr>
+</table>
+<p style="font-size:13px;color:var(--muted)">When unclear, "test-after" is the default. With multiple parallel tracks each is judged separately, and test-first work (payments, auth) is pinned to the strongest model.</p>
+<div class="note"><b>e2e caveat</b> · The default verification agent <code>e2e-runner</code> is <b>for Playwright-based web environments only</b>. If the target isn't web (mobile, CLI, desktop, a pure library) or Playwright / a dedicated e2e agent is absent, the e2e step is <b>skipped automatically</b>. To get end-to-end verification on a non-web project, you must author a verification sub-agent matching that runtime yourself as <code>.claude/agents/e2e-*.md</code>.</div>
+
+<h3>/adr — it branches by design difficulty</h3>
+<p>/adr scans a decision's difficulty across four axes (hard to reverse · competing alternatives · blast radius · failure/security sensitivity) to decide how to proceed.</p>
+<ul>
+  <li><b>All four low</b> (local, easily reversible) → the main agent writes the ADR <b>directly</b>, consulting only <code>architect</code>'s design principles.</li>
+  <li><b>Any one pronounced</b> → a single <code>synthesizer</code> pairs <code>architect</code> with <code>critic</code> internally for <b>adversarial review and convergence</b>, then derives the ADR.</li>
+  <li>When ambiguous, it leans toward verification — an ADR is a heavyweight artifact by nature.</li>
+</ul>
+
+<h3>Components — skills</h3>
+<table>
+  <tr><th>Skill</th><th>Role</th><th>Origin</th></tr>
+  <tr><td><code>dev</code></td><td>Plan and orchestrate multi-session development</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>dev-loop</code></td><td>Auto-repeat the session loop to completion</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>impl</code></td><td>Feature/refactor orchestration</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>adr</code></td><td>Architecture decision records</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>tdd-workflow</code></td><td>Enforce TDD (unit/integration/E2E coverage)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+</table>
+
+<h3>Components — agents</h3>
+<table>
+  <tr><th>Agent</th><th>Role</th><th>Origin</th></tr>
+  <tr><td><code>architect</code></td><td>System design & architecture decisions</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>synthesizer</code></td><td>Converge design + critique into a verified ADR</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>critic</code></td><td>Adversarial critique of design proposals</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>planner</code></td><td>Build the implementation plan</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>plan-reviewer</code></td><td>Critique the implementation plan</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>tdd-guide</code></td><td>Dedicated test authoring</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>code-reviewer</code></td><td>Code quality review</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>security-reviewer</code></td><td>Security vulnerability detection</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>evaluator</code></td><td>E2E strategy design</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>e2e-runner</code></td><td>E2E test execution</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>researcher</code></td><td>Narrowing single-shot research</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>prompt-reviewer</code></td><td>Directive quality audit</td><td><span class="badge b-own">original</span></td></tr>
+</table>
+
+<h3>Rules it uses</h3>
+<ul>
+  <li><code>rules/testing</code> — testing requirements <span class="badge b-ecc">everything-claude-code</span></li>
+  <li><code>rules-detail/claude-doc-writing-rules</code> — rules for docs Claude reads <span class="badge b-own">original</span></li>
+  <li><code>rules-detail/review-disposition-rules</code> — how to handle review results <span class="badge b-own">original</span></li>
+</ul>
+
+<div class="note"><b>Watch out</b> · This family spawns densely. A single <code>/impl</code> auto-calls planner · tdd-guide · code-reviewer and more, so taking the skill without its agents will stall. <b>Install the whole family.</b></div>
+</div>
+
+<!-- ── prp family ── -->
+<div class="section" style="--c:var(--prp)">
+<h2 style="border:none;padding:0;color:var(--prp)">2. /prp family — one-shot pipeline</h2>
+<p>A pipeline based on the PRP (Product Requirement Prompt) methodology, running from a requirements doc all the way to a PR. All of it is adapted from <span class="badge b-prp">Wirasm/PRPs-agentic-eng</span>.</p>
+
+<div class="flow">
+  <span class="step">/prp-prd · define requirements</span><span class="arw">→</span>
+  <span class="step">/prp-plan · implementation plan</span><span class="arw">→</span>
+  <span class="step">/prp-implement · execute</span><span class="arw">→</span>
+  <span class="step">/prp-pr · open PR</span>
+</div>
+<table>
+  <tr><th>Command</th><th>Role</th></tr>
+  <tr><td><code>/prp-prd</code></td><td>Generate a problem-first, hypothesis-driven product spec (PRD) interactively</td></tr>
+  <tr><td><code>/prp-plan</code></td><td>Build an implementation plan via codebase analysis and pattern extraction</td></tr>
+  <tr><td><code>/prp-implement</code></td><td>Execute the plan through validation loops</td></tr>
+  <tr><td><code>/prp-pr</code></td><td>Open a GitHub PR from unpushed commits on the current branch</td></tr>
+  <tr><td><code>/prp-commit</code></td><td>Quick commit with natural-language file targeting</td></tr>
+</table>
+<div class="note"><b>Watch out</b> · This family writes artifacts to <code>.claude/PRPs/</code> (prds · plans · reports). <code>/prp-pr</code> requires the GitHub CLI (<code>gh</code>).</div>
+</div>
+
+<!-- ── memory family ── -->
+<div class="section" style="--c:var(--memory)">
+<h2 style="border:none;padding:0;color:var(--memory)">3. Memory family — auto-remembering</h2>
+<p>Skills and agents record reusable patterns they pick up during a run, so next time the same situation comes up they act immediately instead of re-searching.</p>
+<table>
+  <tr><th>Item</th><th>Role</th><th>Origin</th></tr>
+  <tr><td><code>/add-memory</code> (skill)</td><td>Insert an auto-memory block into skill/agent directives</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>memory-installer</code> (agent)</td><td>Apply that insertion across many files at once</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>rules/memory-rules</code></td><td>Rules for saving recurring debug patterns to project memory</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>rules-detail/learnings-memory-rules</code></td><td>Rules for recording external facts (docs/experiment verified)</td><td><span class="badge b-own">original</span></td></tr>
+</table>
+<div class="note"><b>Watch out</b> · Auto-memory only works where the block is installed. Attach it to the skills/agents you want via <code>/add-memory</code> first. Storage lives at <code>~/.claude/skill-memory/</code> and <code>~/.claude/agent-memory/</code>.</div>
+</div>
+
+<!-- ── other ── -->
+<div class="section" style="--c:var(--other)">
+<h2 style="border:none;padding:0;color:var(--other)">4. Other — conditional rule triggers</h2>
+<p><code>triggers_CLAUDE.md</code> is an <b>example template</b>. The rules under <code>rules-detail/</code> are not auto-loaded, so to make Claude read a rule before a given task, copy this file's "conditional detailed rules" section into your global <code>~/.claude/CLAUDE.md</code>.</p>
+<ul>
+  <li><b>claude-doc-writing-rules</b> — when writing/editing docs Claude reads (CLAUDE.md · SKILL.md · agents, etc.)</li>
+  <li><b>learnings-memory-rules</b> — when you've verified an external fact during a session</li>
+  <li><b>review-disposition-rules</b> — before handling a reviewer agent's results</li>
+</ul>
+</div>
+
+<h2>Installation</h2>
+<p>This repo is built for Claude Code itself, so let Claude handle the install. After cloning, ask your own Claude something like this.</p>
+<p><b>Full install</b></p>
+<pre><code>Port the workflows in this JKBuilders repo into my Claude Code system.
+Copy agents/ · commands/ · skills/ · rules/ · rules-detail/ into the matching
+locations under my ~/.claude/ , and merge the trigger definitions in
+triggers_CLAUDE.md into my global ~/.claude/CLAUDE.md . Tell me first if
+anything would collide with what I already have.</code></pre>
+<p><b>Install one family only</b> (e.g. just the /dev-loop family)</p>
+<pre><code>Port only the /dev-loop family from JKBuilders into my system.
+Install skills/dev · dev-loop · impl · adr · tdd-workflow and the agents/*
+they spawn, plus rules/ · rules-detail/ , under my ~/.claude/ , and merge the
+triggers in triggers_CLAUDE.md into my global CLAUDE.md .</code></pre>
+
+<div class="note"><b>Before installing</b> · Each agent's frontmatter pins a <code>model: opus / sonnet / fable</code>. If your plan can't access that model, adjust it. The files also assume the <code>~/.claude/</code> path convention — install elsewhere and you must update the reference paths too.</div>
+
+<h3>Required settings — settings.json</h3>
+<p>This workflow assumes <b>sub-agent spawning · parallel tracks · nested convergence</b>. The two settings below in <code>~/.claude/settings.json</code> are <b>required</b>.</p>
+<pre><code>{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "worktree": { "baseRef": "head" }
+}</code></pre>
+<ul>
+  <li><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> — <b>Required.</b> Without this flag, <b>nested sub-spawning</b> (a sub-agent spawning yet another sub-agent) is impossible. <code>/dev-loop</code>'s isolated runner chain and <code>synthesizer</code>'s architect·critic convergence only work on top of it, so those steps fail when it's off.</li>
+  <li><code>worktree.baseRef</code> — <b>Required.</b> The base commit used when impl's parallel tracks create isolated workspaces (worktrees).</li>
+</ul>
+
+<footer>
+  <p><b>Credits</b></p>
+  <p>· <b>Wirasm / PRPs-agentic-eng</b> — all /prp family commands<br>
+     · <b><a href="https://github.com/affaan-m/everything-claude-code">everything-claude-code</a></b> — architect · planner · tdd-guide · code-reviewer · security-reviewer · e2e-runner · tdd-workflow · testing rule<br>
+     · Everything else is original</p>
+</footer>
+
+</div>
+</body>
+</html>

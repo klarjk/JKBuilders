@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JKBuilders 상세 설명서</title>
+<style>
+  :root{
+    --bg:#fafafa; --panel:#fff; --ink:#1a1a1c; --muted:#666; --line:#e6e6e9;
+    --devloop:#4f46e5; --prp:#0d9488; --memory:#d97706; --other:#64748b;
+    --code-bg:#f4f4f6;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#131316; --panel:#1c1c20; --ink:#ececef; --muted:#9a9aa2; --line:#2c2c32;
+      --devloop:#818cf8; --prp:#2dd4bf; --memory:#fbbf24; --other:#94a3b8;
+      --code-bg:#26262c;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    line-height:1.7; font-size:16px;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:32px 20px 80px}
+  header.top{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:8px}
+  .lang a{color:var(--muted); text-decoration:none; font-size:14px; padding:4px 10px; border:1px solid var(--line); border-radius:20px}
+  .lang a.active{color:var(--ink); border-color:var(--ink)}
+  h1{font-size:30px; margin:.2em 0 .1em; letter-spacing:-.5px}
+  .sub{color:var(--muted); margin:0 0 28px; font-size:16px}
+  h2{font-size:22px; margin:44px 0 14px; padding-bottom:8px; border-bottom:2px solid var(--line)}
+  h3{font-size:17px; margin:26px 0 8px}
+  p{margin:.5em 0}
+  a{color:var(--devloop)}
+  code{background:var(--code-bg); padding:1px 6px; border-radius:5px; font-size:.88em; font-family:"SF Mono",ui-monospace,Menlo,monospace}
+  pre{background:var(--code-bg); padding:14px 16px; border-radius:10px; overflow-x:auto; font-size:13.5px; line-height:1.6}
+  pre code{background:none; padding:0}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:20px 0}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; border-top:3px solid var(--c)}
+  .card h4{margin:0 0 4px; font-size:15px}
+  .card p{margin:0; font-size:13px; color:var(--muted)}
+  .card .cmd{font-size:12px; color:var(--c); font-weight:600; margin-top:8px; font-family:"SF Mono",ui-monospace,monospace}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:14px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-weight:600; color:var(--muted); font-size:12.5px; text-transform:uppercase; letter-spacing:.4px}
+  td code{white-space:nowrap}
+  .badge{display:inline-block; font-size:11px; padding:1px 7px; border-radius:20px; font-weight:600; white-space:nowrap}
+  .b-ecc{background:color-mix(in srgb,var(--prp) 16%,transparent); color:var(--prp)}
+  .b-prp{background:color-mix(in srgb,var(--prp) 16%,transparent); color:var(--prp)}
+  .b-own{background:color-mix(in srgb,var(--other) 18%,transparent); color:var(--other)}
+  .section{border-left:4px solid var(--c); padding-left:18px; margin:36px 0}
+  .flow{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:14px 0; font-size:13.5px}
+  .flow .step{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 11px; font-weight:600}
+  .flow .arw{color:var(--muted)}
+  .note{background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--memory); border-radius:8px; padding:12px 16px; margin:16px 0; font-size:14px}
+  .note b{color:var(--memory)}
+  ul{margin:.4em 0; padding-left:22px}
+  li{margin:.25em 0}
+  footer{margin-top:60px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="lang">
+    <a class="active" href="manual.ko.html">한국어</a>
+    <a href="manual.en.html">English</a>
+  </div>
+</header>
+
+<h1>JKBuilders 상세 설명서</h1>
+<p class="sub">Claude Code용 개발 워크플로우 모음 — 명령 한 줄이면 뒤에서 여러 전문 에이전트가 협업합니다. 이 문서는 <b>사용자가 어떻게 쓰면 되는지</b>와 <b>주의할 점</b> 위주로 정리합니다.</p>
+
+<h2>한눈에 보기</h2>
+<p>네 갈래로 나뉩니다. 각 갈래는 진입 명령 하나로 시작하고, 필요한 에이전트를 알아서 불러옵니다.</p>
+<div class="cards">
+  <div class="card" style="--c:var(--devloop)">
+    <h4>/dev-loop 계열</h4>
+    <p>멀티세션 개발 지휘. 계획→설계→구현→리뷰를 세션 단위로 자동 반복.</p>
+    <div class="cmd">/dev · /dev-loop · /impl · /adr</div>
+  </div>
+  <div class="card" style="--c:var(--prp)">
+    <h4>/prp 계열</h4>
+    <p>요구사항→계획→구현→PR로 이어지는 단발 파이프라인.</p>
+    <div class="cmd">/prp-prd · /prp-plan · /prp-implement · /prp-pr</div>
+  </div>
+  <div class="card" style="--c:var(--memory)">
+    <h4>메모리 계열</h4>
+    <p>스킬·에이전트가 배운 것을 다음 실행에서 기억.</p>
+    <div class="cmd">/add-memory</div>
+  </div>
+  <div class="card" style="--c:var(--other)">
+    <h4>기타</h4>
+    <p>조건부 규칙 트리거 예시 등.</p>
+    <div class="cmd">triggers_CLAUDE.md</div>
+  </div>
+</div>
+<p style="font-size:13.5px;color:var(--muted)">
+  출처 표기: <span class="badge b-prp">Wirasm/PRPs-agentic-eng</span>
+  <span class="badge b-ecc">everything-claude-code</span>
+  <span class="badge b-own">자체 제작</span>
+</p>
+
+<!-- ── dev-loop 계열 ── -->
+<div class="section" style="--c:var(--devloop)">
+<h2 style="border:none;padding:0;color:var(--devloop)">1. /dev-loop 계열 — 멀티세션 개발 지휘</h2>
+<p>큰 기능을 여러 세션에 걸쳐 개발할 때 쓰는 중심 워크플로우입니다. 계획을 세우고, 설계를 결정하고, 구현·테스트·리뷰까지 한 흐름으로 굴립니다.</p>
+
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">가장 간단하게</b> · <code>/dev-loop</code> 뒤에 <b>만들고 싶은 것을 한 문장</b>으로 적어 실행하면 됩니다. 예: <code>/dev-loop 사용자 프로필 편집 기능을 추가해줘</code>. 그러면 나머지는 알아서 합니다 — 필요한 내용을 조사하고, 설계 결정을 내리고, <b>작업 크기에 맞는 구현 계획</b>을 스스로 짜서 세션 단위로 구현·리뷰까지 반복합니다.</div>
+
+<h3>이렇게 진행됩니다</h3>
+<div class="flow">
+  <span class="step">/dev · 개발 계획 수립</span><span class="arw">→</span>
+  <span class="step">/adr · 설계 결정</span><span class="arw">→</span>
+  <span class="step">/impl · 구현+테스트+리뷰</span><span class="arw">→</span>
+  <span class="step">/dev-loop · 완료까지 자동 반복</span>
+</div>
+<ul>
+  <li><b>/dev</b> — 대화형으로 개발 계획서(DEV_PLAN)를 세웁니다. 조사·성공조건·설계 필요 여부를 판정한 뒤 작업을 세션 단위로 쪼갭니다.</li>
+  <li><b>/dev-loop</b> — 위 세션 루프를 계획이 끝날 때까지 <b>자동 반복</b>합니다. 계획·설계는 직접, 구현은 격리된 실행기로 돌립니다.</li>
+  <li><b>/impl</b> — 신규 기능·리팩토링 한 건을 받아 설계→계획→구현→리뷰 에이전트 체인을 자동으로 굴립니다.</li>
+  <li><b>/adr</b> — 아키텍처 결정을 문서로 남깁니다. 쉬운 결정은 직접, 어려운 결정은 설계+비평 수렴 에이전트로 넘깁니다.</li>
+</ul>
+
+<h3>/impl — 작업 크기에 맞춰 워크플로우가 자동으로 달라집니다</h3>
+<p>impl은 요청을 받으면 먼저 <b>작업 규모</b>를 판정하고, 크기에 맞는 에이전트 구성을 스스로 정합니다. 작은 일에 무거운 절차를 씌우지 않고, 큰 일에는 설계·검증을 촘촘히 붙입니다.</p>
+<table>
+  <tr><th>크기</th><th>대략 기준</th><th>자동 구성 워크플로우</th></tr>
+  <tr><td><b>소</b></td><td>파일 1~2개·함수 몇 개, 새 구조 없음</td><td>메인이 직접 구현 → code-reviewer</td></tr>
+  <tr><td><b>중</b><br>(검증 생략)</td><td>파일 3~10개인데 끝단 e2e가 불필요하거나 불가능</td><td>직접 계획 → tdd-guide(단위·통합) → code-reviewer</td></tr>
+  <tr><td><b>중</b><br>(검증 포함)</td><td>파일 3~10개, 웹 플로우 e2e 검증이 의미 있음</td><td>planner → tdd-guide → code-reviewer → 통합 → evaluator → e2e-runner</td></tr>
+  <tr><td><b>대</b></td><td>파일 10개+·새 모듈/패키지·외부 의존 추가</td><td>architect <i>또는</i> synthesizer(설계) → planner(ultra) → tdd-guide → code-reviewer → 통합 → evaluator → e2e-runner</td></tr>
+</table>
+<ul>
+  <li><b>대 규모는 계획을 ultra 모드로</b> 세웁니다 — planner가 만든 계획을 3명의 검토자가 나눠 스스로 비평·보강합니다(중 이하에는 미적용).</li>
+  <li><b>독립적인 작업 갈래가 2개 이상이면 자동 병렬</b> — 각 갈래를 격리된 작업 공간(worktree)에서 동시에 굴립니다.</li>
+  <li>대 규모 설계 단계는 변경 범위로 갈립니다 — 새 첫 구현이거나 모듈 경계가 두루 바뀌면 <code>synthesizer</code>, 기존 모듈 내부만 바뀌면 <code>architect</code>.</li>
+  <li>크기가 애매하면 <b>큰 쪽</b>으로 분류합니다.</li>
+</ul>
+<p>작업(트랙)마다 성격에 맞는 <b>테스트 방식</b>도 자동으로 정합니다.</p>
+<table>
+  <tr><th>방식</th><th>언제</th><th>어떻게</th></tr>
+  <tr><td><b>선행 (BDD)</b></td><td>결제·정산·금액·인증·권한</td><td>테스트를 먼저 써서 실패를 확인(RED) → 구현(GREEN) → 리팩토링</td></tr>
+  <tr><td><b>사후</b></td><td>핵심 사용자 여정에 닿거나 위험 로직(잔액·재고·포인트 등 상태 누적, 반올림·날짜·경계 계산)</td><td>구현 먼저 → 정상 경로 + 틀리기 쉬운 경계를 테스트로 커버</td></tr>
+  <tr><td><b>생략</b></td><td>단순 전달·표시·설정·배선</td><td>테스트 없이 구현만</td></tr>
+</table>
+<p style="font-size:13px;color:var(--muted)">근거가 애매하면 '사후'가 기본입니다. 병렬 트랙이 여러 개면 각 트랙마다 따로 판정하고, 결제·인증 등 '선행' 작업은 가장 강한 모델로 고정해 다룹니다.</p>
+<div class="note"><b>e2e 검증 주의</b> · 기본 검증 에이전트 <code>e2e-runner</code>는 <b>Playwright 기반 웹 환경 전용</b>입니다. 대상이 웹이 아니거나(모바일·CLI·데스크톱·순수 라이브러리) Playwright·전용 e2e 에이전트가 없으면 e2e 단계를 <b>자동으로 건너뜁니다</b>. 웹이 아닌 프로젝트에서 끝단 검증까지 원하면, 그 실행 환경에 맞는 검증 서브에이전트를 <code>.claude/agents/e2e-*.md</code>로 직접 작성해 두어야 합니다.</div>
+
+<h3>/adr — 설계 난이도에 따라 갈립니다</h3>
+<p>/adr은 결정의 난이도를 네 축(되돌리기 어려움 · 경쟁 대안 유무 · 영향 범위 · 실패/보안 민감도)으로 훑어 진행 방식을 정합니다.</p>
+<ul>
+  <li><b>네 축 모두 낮음</b> (국소적·되돌리기 쉬움) → <code>architect</code> 설계 원칙만 참고해 <b>메인이 직접</b> ADR을 작성합니다.</li>
+  <li><b>하나라도 뚜렷함</b> → <code>synthesizer</code> 하나가 <code>architect</code>와 <code>critic</code>을 내부에서 붙여 <b>적대적 검증·수렴</b>을 거친 뒤 ADR을 도출합니다.</li>
+  <li>애매하면 검증 쪽으로 기웁니다 — ADR은 태생이 무거운 산출물이기 때문입니다.</li>
+</ul>
+
+<h3>구성 — 스킬</h3>
+<table>
+  <tr><th>스킬</th><th>역할</th><th>출처</th></tr>
+  <tr><td><code>dev</code></td><td>멀티세션 개발 계획 수립·지휘</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>dev-loop</code></td><td>세션 루프를 완료까지 자동 반복</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>impl</code></td><td>기능·리팩토링 오케스트레이션</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>adr</code></td><td>아키텍처 결정 문서화</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>tdd-workflow</code></td><td>TDD 강제 (단위·통합·E2E 커버리지)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+</table>
+
+<h3>구성 — 에이전트</h3>
+<table>
+  <tr><th>에이전트</th><th>역할</th><th>출처</th></tr>
+  <tr><td><code>architect</code></td><td>시스템 설계·아키텍처 결정</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>synthesizer</code></td><td>설계+비평을 수렴해 검증된 ADR 도출</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>critic</code></td><td>설계안 적대적 비평</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>planner</code></td><td>구현 계획 수립</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>plan-reviewer</code></td><td>구현 계획 비평</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>tdd-guide</code></td><td>테스트 작성 전담</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>code-reviewer</code></td><td>코드 품질 리뷰</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>security-reviewer</code></td><td>보안 취약점 탐지</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>evaluator</code></td><td>E2E 전략 설계</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>e2e-runner</code></td><td>E2E 테스트 실행</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>researcher</code></td><td>좁혀가는 단발 조사</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>prompt-reviewer</code></td><td>지시문 품질 감사</td><td><span class="badge b-own">자체</span></td></tr>
+</table>
+
+<h3>함께 쓰는 규칙</h3>
+<ul>
+  <li><code>rules/testing</code> — 테스트 요구사항 <span class="badge b-ecc">everything-claude-code</span></li>
+  <li><code>rules-detail/claude-doc-writing-rules</code> — Claude가 읽는 문서 작성 규칙 <span class="badge b-own">자체</span></li>
+  <li><code>rules-detail/review-disposition-rules</code> — 리뷰 결과 처분 규칙 <span class="badge b-own">자체</span></li>
+</ul>
+
+<div class="note"><b>주의</b> · 이 계열은 상호 스폰이 촘촘합니다. <code>/impl</code> 하나가 planner·tdd-guide·code-reviewer 등을 자동으로 부르므로, 스킬만 떼오고 에이전트를 빼면 멈춥니다. <b>계열 통째로 설치</b>하세요.</div>
+</div>
+
+<!-- ── prp 계열 ── -->
+<div class="section" style="--c:var(--prp)">
+<h2 style="border:none;padding:0;color:var(--prp)">2. /prp 계열 — 단발 개발 파이프라인</h2>
+<p>PRP(Product Requirement Prompt) 방법론에 기반한 파이프라인입니다. 요구사항 문서부터 PR까지 한 줄기로 이어집니다. 전부 <span class="badge b-prp">Wirasm/PRPs-agentic-eng</span>에서 차용했습니다.</p>
+
+<div class="flow">
+  <span class="step">/prp-prd · 요구사항 정의</span><span class="arw">→</span>
+  <span class="step">/prp-plan · 구현 계획</span><span class="arw">→</span>
+  <span class="step">/prp-implement · 실행</span><span class="arw">→</span>
+  <span class="step">/prp-pr · PR 생성</span>
+</div>
+<table>
+  <tr><th>커맨드</th><th>역할</th></tr>
+  <tr><td><code>/prp-prd</code></td><td>문제 우선·가설 기반 제품 스펙(PRD)을 대화형으로 생성</td></tr>
+  <tr><td><code>/prp-plan</code></td><td>코드베이스 분석·패턴 추출로 구현 계획 작성</td></tr>
+  <tr><td><code>/prp-implement</code></td><td>검증 루프를 돌며 계획 실행</td></tr>
+  <tr><td><code>/prp-pr</code></td><td>현재 브랜치의 미푸시 커밋으로 GitHub PR 생성</td></tr>
+  <tr><td><code>/prp-commit</code></td><td>자연어로 대상 파일을 지정해 빠르게 커밋</td></tr>
+</table>
+<div class="note"><b>주의</b> · 이 계열은 산출물을 <code>.claude/PRPs/</code> 폴더(prds·plans·reports)에 쌓습니다. <code>/prp-pr</code>은 GitHub CLI(<code>gh</code>)가 있어야 동작합니다.</div>
+</div>
+
+<!-- ── 메모리 계열 ── -->
+<div class="section" style="--c:var(--memory)">
+<h2 style="border:none;padding:0;color:var(--memory)">3. 메모리 계열 — 자동 기억</h2>
+<p>스킬·에이전트가 실행에서 얻은 재사용 가능한 패턴을 스스로 기록해, 다음번 같은 상황에서 다시 탐색하지 않고 바로 쓰게 합니다.</p>
+<table>
+  <tr><th>항목</th><th>역할</th><th>출처</th></tr>
+  <tr><td><code>/add-memory</code> (스킬)</td><td>스킬·에이전트 지시문에 자동 메모리 블록을 삽입</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>memory-installer</code> (에이전트)</td><td>위 삽입을 여러 파일에 일괄 처리</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>rules/memory-rules</code></td><td>디버깅 후 재발 패턴을 프로젝트 메모리에 저장하는 규칙</td><td><span class="badge b-own">자체</span></td></tr>
+  <tr><td><code>rules-detail/learnings-memory-rules</code></td><td>외부 사실(문서·실험 검증)을 기록하는 규칙</td><td><span class="badge b-own">자체</span></td></tr>
+</table>
+<div class="note"><b>주의</b> · 자동 메모리는 블록이 심어진 항목에서만 동작합니다. 원하는 스킬·에이전트에 <code>/add-memory</code>로 먼저 장착하세요. 저장 위치는 <code>~/.claude/skill-memory/</code>·<code>~/.claude/agent-memory/</code>입니다.</div>
+</div>
+
+<!-- ── 기타 ── -->
+<div class="section" style="--c:var(--other)">
+<h2 style="border:none;padding:0;color:var(--other)">4. 기타 — 조건부 규칙 트리거</h2>
+<p><code>triggers_CLAUDE.md</code>는 <b>예시 템플릿</b>입니다. <code>rules-detail/</code>의 규칙들은 자동으로 로드되지 않으므로, Claude가 특정 작업 전에 해당 규칙을 읽도록 하려면 이 파일의 "조건부 상세 규칙" 섹션을 본인의 전역 <code>~/.claude/CLAUDE.md</code>에 복사해 넣습니다.</p>
+<ul>
+  <li><b>claude-doc-writing-rules</b> — Claude가 읽는 문서(CLAUDE.md·SKILL.md·agents 등)를 작성·수정할 때</li>
+  <li><b>learnings-memory-rules</b> — 세션 중 외부 사실을 검증했을 때</li>
+  <li><b>review-disposition-rules</b> — 리뷰어 에이전트 결과를 처리하기 전</li>
+</ul>
+</div>
+
+<h2>설치 방법</h2>
+<p>이 저장소는 Claude Code 자체를 위한 것이라, 설치도 클로드에게 맡기면 됩니다. 내려받은 뒤 본인의 Claude에게 아래처럼 부탁하세요.</p>
+<p><b>전체 이식</b></p>
+<pre><code>이 JKBuilders 저장소의 워크플로우를 내 Claude Code 시스템에 이식해줘.
+agents/ · commands/ · skills/ · rules/ · rules-detail/ 를 내 ~/.claude/ 아래
+대응 위치에 복사하고, triggers_CLAUDE.md 의 트리거 정의를 내 전역
+~/.claude/CLAUDE.md 에 병합해줘. 겹치는 항목이 있으면 먼저 알려줘.</code></pre>
+<p><b>계열만 골라 이식</b> (예: /dev-loop 계열만)</p>
+<pre><code>JKBuilders의 /dev-loop 계열만 내 시스템에 이식해줘.
+skills/dev · dev-loop · impl · adr · tdd-workflow 와 이들이 스폰하는
+agents/* , 그리고 rules/ · rules-detail/ 를 ~/.claude/ 아래에 설치하고,
+triggers_CLAUDE.md 의 트리거를 내 전역 CLAUDE.md 에 병합해줘.</code></pre>
+
+<div class="note"><b>설치 전 확인</b> · 각 에이전트 앞머리에 <code>model: opus / sonnet / fable</code> 지정이 있습니다. 본인 요금제에서 못 쓰는 모델이면 조정이 필요합니다. 또 파일들은 <code>~/.claude/</code> 경로 관례를 전제하므로, 다른 위치에 설치하면 참조 경로도 함께 바꿔야 합니다.</div>
+
+<h3>필수 설정 — settings.json</h3>
+<p>이 워크플로우는 <b>서브에이전트 스폰 · 병렬 트랙 · 중첩 수렴</b>을 전제로 합니다. <code>~/.claude/settings.json</code>에 아래 두 항목을 <b>반드시</b> 설정해야 합니다.</p>
+<pre><code>{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "worktree": { "baseRef": "head" }
+}</code></pre>
+<ul>
+  <li><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> — <b>필수.</b> 이 플래그가 없으면 <b>중첩 서브스폰</b>(서브에이전트가 다시 다른 서브에이전트를 스폰)이 원천적으로 불가능합니다. <code>/dev-loop</code>의 격리 러너 체인과 <code>synthesizer</code>의 architect·critic 수렴이 이 위에서만 동작하므로, 꺼져 있으면 해당 단계가 실패합니다.</li>
+  <li><code>worktree.baseRef</code> — <b>필수.</b> impl의 병렬 트랙이 격리 작업 공간(worktree)을 만들 때 기준 커밋입니다.</li>
+</ul>
+
+<footer>
+  <p><b>출처 / 크레딧</b></p>
+  <p>· <b>Wirasm / PRPs-agentic-eng</b> — /prp 계열 커맨드 전부<br>
+     · <b><a href="https://github.com/affaan-m/everything-claude-code">everything-claude-code</a></b> — architect · planner · tdd-guide · code-reviewer · security-reviewer · e2e-runner · tdd-workflow · testing 룰<br>
+     · 그 외 모든 항목은 자체 제작</p>
+</footer>
+
+</div>
+</body>
+</html>
