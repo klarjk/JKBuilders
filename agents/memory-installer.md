@@ -9,6 +9,7 @@ description: |-
   - 컨텍스트 포화로 메인 분리 필요
 tools: Read, Write, Edit, Grep, Glob, Bash
 model: sonnet
+effort: medium
 color: cyan
 skills:
   - add-memory
