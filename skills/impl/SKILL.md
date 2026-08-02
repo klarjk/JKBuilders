@@ -131,7 +131,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 
 1. **사용자에 한 줄 보고** ("크기 소. 메인 직접 구현 후 code-reviewer.").
 2. **메인이 직접 테스트 tier를 판정한다** (3-tier, "테스트 tier 판정" 절 참조). 결제·정산·금액·인증·권한이면 `bdd`(behavior 단위·선행), 핵심 여정에 닿거나 위험 로직(상태 누적·경계 계산)이면 `tested`(구현 후 사후 테스트), 단순 전달·표시뿐이면 `none`(테스트 생략). 근거 없으면 `tested`가 기본.
-3. **메인이 직접 구현한다.** `bdd`면 `rules/testing.md`에 따라 선행(테스트 먼저 RED → 구현 GREEN → 리팩토링), `tested`면 사후(구현 먼저 → 정상 경로 + 위험·경계를 테스트로 커버)로 메인이 직접 수행한다 — 별도 tdd-guide 스폰·핸드오프 파일·state_delta는 없다. `none`이면 테스트 없이 구현만 한다(소는 끝단 e2e가 없으므로, 다음 단계 code-reviewer 육안 점검으로 갈음 — 단순 코드라 e2e 없이도 리스크 낮음).
+3. **메인이 직접 구현한다.** `bdd`면 `rules/testing.md`에 따라 선행(테스트 먼저 RED → 구현 GREEN → 리팩토링), `tested`면 사후(구현 먼저 → 정상 경로 + 위험·경계를 테스트로 커버)로 메인이 직접 수행한다 — 별도 tdd-guide 스폰·핸드오프 파일·state_delta는 없다. `none`이면 테스트 없이 구현만 한다(소는 끝단 e2e가 없으므로, 다음 단계 code-reviewer 육안 점검으로 갈음 — 단순 코드라 e2e 없이도 리스크 낮음). **구현 직후, 변경한 파일과 같은 디렉토리에 기존 테스트가 있으면 그 범위만 실행해 회귀를 확인한다(관련 기존 테스트가 없으면 생략). fail 시 4번 code-reviewer 스폰 전에 원인부터 해소한다** — 소는 tdd-guide를 스폰하지 않아 그 정의의 범위 한정 회귀 규칙이 적용되지 않으므로, 회귀 실행 지점을 여기에 둔다.
 4. **구현·수정 직후 code-reviewer를 1회 스폰한다** (immediate agent usage와 동일). 위임 프롬프트에는 변경 파일 경로·작업 범위만 전달한다 — `_workspace`·state_delta·`06_review_*.md` 계약을 주입하지 않는다. 사용자 입력 처리·인증/인가·API 엔드포인트·시크릿/외부 통신 중 하나라도 닿으면 security-reviewer도 같은 응답에 묶어 병렬 스폰한다.
 5. 리뷰에 차단성 결함이 있으면 메인이 직접 수정하고 필요 시 재리뷰한다. 0건이면 종료한다.
 
@@ -146,7 +146,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 3. **tdd-guide 스폰 (트랙별).** 위임 프롬프트에 트랙 작업 범위를 **직접 적고, 모드를 명시한다 — `bdd`는 선행(시나리오 먼저 RED-GREEN), `tested`는 사후(구현 먼저 → 정상 경로 + 위험·경계 커버)** — `instructions/<id>.md`·state_delta·`_workspace` 계약을 주입하지 않는다. 독립 트랙 ≥ 2개 + git 저장소면 `isolation: worktree`로 병렬 스폰, 아니면 직렬. **`test_tier="none"` 트랙은 tdd-guide를 스폰하지 않는다** — 병렬이면 범용 서브에이전트(general-purpose)에 위임 프롬프트로 직접 지시("테스트 미작성, 구현만"), 단일 트랙이면 메인이 직접 구현한다. 중(검증 없음) 경로는 끝단 e2e가 없으므로 `none` 트랙은 다음 단계 code-reviewer 육안 점검으로 갈음한다(단순 코드라 리스크 낮음).
 4. **트랙 완료마다 code-reviewer 스폰** (immediate agent usage와 동일). 보안 민감 트랙(사용자 입력·인증/인가·API·시크릿/외부 통신)은 security-reviewer를 같은 응답에 병렬 스폰. 차단성 결함이 있는 트랙은 tdd-guide(`none` 트랙은 general-purpose)로 재위임, 0건이면 다음 단계.
 5. **머지** (worktree 병렬이었으면). 충돌 시 통합 tdd-guide 위임 프롬프트에 해소를 포함한다.
-6. **통합 tdd-guide → 통합 code-reviewer** 스폰 (머지된 단일 트리). 통합 테스트·결합부 구현·최종 회귀까지 마치면 종료한다.
+6. **통합 tdd-guide → 통합 code-reviewer** 스폰 (머지된 단일 트리). 통합 테스트·결합부 구현·**최종 회귀(전체 테스트 스위트 1회 — 이 경로에서 전체 스위트를 돌리는 유일한 지점)**까지 마치면 종료한다. 위임 프롬프트에 "최종 회귀: 전체 스위트 실행"을 명시한다.
 
 중 경량 경로는 PRD 게이트·evaluator·e2e·state.json 기반 사이클 제어를 적용하지 않는다. 위임 프롬프트는 `_workspace` 산출물·state_delta 항목을 뺀 단순형으로 작성한다.
 
@@ -213,7 +213,7 @@ tdd-guide 완료 트랙마다 code-reviewer 스폰. `needs_security_review: true
 
 1. 머지된 단일 트리에서 **새 tdd-guide 인스턴스** 스폰. 단위 단계 인스턴스를 재사용하지 않는다(fresh 컨텍스트로 폭증 방지).
 2. **모델**: 충돌 발생 시 opus, 충돌 0이고 머지 코드 200K 초과도 opus, 그 외 sonnet.
-3. 위임 프롬프트에 `03_plan.md`의 Testing Strategy(통합 설계도) Read 지시. 작업: 통합 테스트 + 결합부 구현 + 최종 회귀 + (충돌 시) 충돌 해소.
+3. 위임 프롬프트에 `03_plan.md`의 Testing Strategy(통합 설계도) Read 지시. 작업: 통합 테스트 + 결합부 구현 + **최종 회귀(전체 테스트 스위트 1회 — 이 워크플로우에서 전체 스위트를 돌리는 유일한 지점)** + (충돌 시) 충돌 해소. 2단계 단위 트랙은 변경 범위 테스트만 돌렸으므로, 트랙 간 상호작용 회귀는 여기서 처음 검증된다.
 4. 산출 `08_integration_handoff.md`. 회수 후 `state_delta`로 `phase=integration`·`last_result` 머지.
 
 ### 6단계 — 통합 code-reviewer (중·대)
