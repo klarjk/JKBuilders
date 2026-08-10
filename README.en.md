@@ -10,13 +10,15 @@
 
 A collection of **workflow tools** for building software in Claude Code. Planning development, making design decisions, and implementing/testing/reviewing code are split across specialist agents and skills. A single command (`/dev-loop`, `/impl`, `/prp-plan`, etc.) sets the relevant agents collaborating automatically behind the scenes.
 
+Multi-session development doesn't line the work up as a single sequence — it lays it out as a **work flowchart**. Each task is one box, connected by "what has to finish before this can start", so whatever can run at once does, and points where the result changes the path are handled as branches.
+
 ## What's inside?
 
 It's organized into four families.
 
 | Family | What it does | Entry command |
 |--------|--------------|---------------|
-| **/dev-loop family** | Multi-session development orchestration — plan → design → implement → review, looped per session | `/dev` · `/dev-loop` · `/impl` · `/adr` |
+| **/dev-loop family** | Multi-session development orchestration — lays the work out as a flowchart, then loops research → design → build → review to completion | `/dev` · `/dev-loop` · `/impl` · `/adr` |
 | **/prp family** | A one-shot pipeline from requirements → plan → implementation → PR | `/prp-prd` · `/prp-plan` · `/prp-implement` · `/prp-pr` · `/prp-commit` |
 | **Memory family** | Auto-memory that lets skills/agents remember what they learned for the next run | `/add-memory` |
 | **Other** | Conditional rule-trigger examples, etc. | `triggers_CLAUDE.md` |

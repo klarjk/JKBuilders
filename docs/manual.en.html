@@ -78,7 +78,7 @@
 <div class="cards">
   <div class="card" style="--c:var(--devloop)">
     <h4>/dev-loop family</h4>
-    <p>Multi-session dev orchestration. Plan → design → implement → review, looped per session.</p>
+    <p>Multi-session dev orchestration. Lays the work out as a flowchart, then loops research → design → build → review to completion.</p>
     <div class="cmd">/dev · /dev-loop · /impl · /adr</div>
   </div>
   <div class="card" style="--c:var(--prp)">
@@ -108,21 +108,63 @@
 <h2 style="border:none;padding:0;color:var(--devloop)">1. /dev-loop family — multi-session orchestration</h2>
 <p>The core workflow for building a large feature across multiple sessions. It plans, decides the design, and runs implementation, testing, and review in one flow.</p>
 
-<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Simplest way</b> · Just run <code>/dev-loop</code> followed by <b>one sentence describing what you want to build</b>. e.g. <code>/dev-loop add a user profile editing feature</code>. It takes care of the rest — researches what it needs, makes the design decisions, and drafts an <b>implementation plan sized to the work</b>, then loops through build and review per session.</div>
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Simplest way</b> · Just run <code>/dev-loop</code> followed by <b>one sentence describing what you want to build</b>. e.g. <code>/dev-loop add a user profile editing feature</code>. It takes care of the rest — draws the whole job as a <b>work flowchart</b>, researches what it needs, makes the design decisions, and runs build and review in order.</div>
 
 <h3>How it flows</h3>
 <div class="flow">
-  <span class="step">/dev · plan the work</span><span class="arw">→</span>
-  <span class="step">/adr · design decisions</span><span class="arw">→</span>
-  <span class="step">/impl · build + test + review</span><span class="arw">→</span>
+  <span class="step">/dev · draw the work flowchart</span><span class="arw">→</span>
+  <span class="step">pick what's ready to run</span><span class="arw">→</span>
+  <span class="step">delegate per task (/adr · /impl · research)</span><span class="arw">→</span>
   <span class="step">/dev-loop · auto-repeat to done</span>
 </div>
 <ul>
-  <li><b>/dev</b> — Builds a development plan (DEV_PLAN) interactively. It scopes research, success criteria, and whether design work is needed, then splits the work into sessions.</li>
-  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that session loop until the plan is complete. Planning/design happen directly; implementation runs in an isolated runner.</li>
+  <li><b>/dev</b> — Builds a development plan (DEV_PLAN) interactively. It lays the whole job out as a <b>work flowchart</b>, then runs whichever tasks have their prerequisites met.</li>
+  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. Planning, research, and design happen directly; implementation runs in an isolated runner.</li>
   <li><b>/impl</b> — Takes one feature or refactor and runs the design → plan → build → review agent chain automatically.</li>
   <li><b>/adr</b> — Records an architecture decision. Easy calls are handled directly; hard ones go to a design + critique convergence agent.</li>
 </ul>
+
+<h3>/dev — the work is laid out as a flowchart</h3>
+<p>It used to line the work up as a single sequence of sessions. Now it draws a <b>flowchart</b>. Each task becomes one box (a node), and boxes are connected by <b>"what has to finish before this can start"</b>. The plan file carries that picture alongside a task table, which is what execution decisions actually read from.</p>
+<pre><code>N1 research ─┐
+             ├─→ N3 build ─→ N5 deploy
+N2 experiment┘        ↑
+   └→ ◇ format differs? ─(yes)→ N4 add conversion ┘</code></pre>
+<p>Three things follow naturally from drawing it this way.</p>
+<ul>
+  <li><b>Whatever can run at once, runs at once</b> — tasks sharing the same prerequisites go together.</li>
+  <li><b>The path can fork on a result</b> — a diamond (◇) is a decision point. Once it's settled, the branch not taken is marked <i>skipped</i>, so the plan can still close cleanly.</li>
+  <li><b>Unknowns are pulled to the front</b> — anything you only learn by checking (external formats, measured values) becomes its own box ahead of the build, instead of stalling the build halfway through.</li>
+</ul>
+
+<h4 style="margin:22px 0 8px;font-size:15px">The six kinds of task</h4>
+<table>
+  <tr><th>Kind</th><th>What it is</th><th>Who does it</th></tr>
+  <tr><td><b>Research</b></td><td>Done once the material is gathered and written up (external API contracts, current library usage)</td><td>Sub-agent</td></tr>
+  <tr><td><b>Experiment</b></td><td>Only settled by actually running it. The result decides which way the flow goes</td><td>Main</td></tr>
+  <tr><td><b>Design</b></td><td>Architecture decisions → calls <code>/adr</code></td><td>Main</td></tr>
+  <tr><td><b>Visual design</b></td><td>You pick the mockup; main turns it into a build-ready spec</td><td>You + main</td></tr>
+  <tr><td><b>Build</b></td><td>Writing code → calls <code>/impl</code></td><td>Sub-agent</td></tr>
+  <tr><td><b>Operation</b></td><td>One-shot, hard-to-undo actions (data migration, merging branches, deploys). Backup and rollback paths are checked first</td><td>Main</td></tr>
+</table>
+<p style="font-size:13px;color:var(--muted)">Anything only a human can confirm (eyeballing a result, checking a real environment, choosing a mockup) is assigned to you automatically, and anything another team or project owns is marked external and left waiting.</p>
+
+<h4 style="margin:22px 0 8px;font-size:15px">Running builds side by side</h4>
+<p>Two build tasks can run in parallel only if <b>both</b> hold — ① the files they touch don't overlap, and ② their tests don't grab the same port, DB file, or external service at the same time. If either is uncertain, they run one after another instead.</p>
+<ul>
+  <li>When they do run in parallel, each build works in an <b>isolated worktree</b> and commits only to its own branch.</li>
+  <li>End-to-end verification is not run per branch. A separate <b>merge task</b> sits behind them: it merges the branches in order, runs the full test suite once, then runs e2e once on the combined tree.</li>
+  <li>If e2e fails, the failing flow's files are matched against the "owned files" column to pin down which build caused it, and only that one re-runs. If the match is inconclusive, it reports to you rather than guessing.</li>
+</ul>
+
+<h3>/dev-loop — how the automatic loop differs</h3>
+<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you — and it decides how to handle each task by <b>looking at its kind first</b>.</p>
+<ul>
+  <li><b>Build tasks</b> → one <b>isolated runner</b> is spawned per task. The build details never accumulate in the main conversation, which conserves context.</li>
+  <li><b>Everything else</b> (research, experiment, design, visual design, operation) → handed to <code>/dev</code>, one task at a time, so the planning logic isn't duplicated in two places.</li>
+</ul>
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">The auto loop runs one at a time</b> · Even when the plan lays builds out in parallel, the automatic loop runs them <b>sequentially</b>. Relaying with a runner takes six to ten round trips per task, so running several at once risks dropped signals. If you genuinely need parallel builds, drive it with <code>/dev</code> instead.</div>
+<p style="font-size:13px;color:var(--muted)">There are stop guards too. Once a single call accumulates 3 non-build tasks or finishes 5 builds, it saves and commits the plan, tells you to continue in a fresh session, and stops. If runner delegation fails twice in a row, main handles that one task directly and says so in one line — isolation is given up, but progress isn't.</p>
 
 <h3>/impl — the workflow adapts automatically to the size of the work</h3>
 <p>impl first judges the <b>scale</b> of the request, then picks an agent setup to match. It won't wrap a tiny change in heavy process, and it layers design and verification thickly onto big ones.</p>
@@ -160,8 +202,8 @@
 <h3>Components — skills</h3>
 <table>
   <tr><th>Skill</th><th>Role</th><th>Origin</th></tr>
-  <tr><td><code>dev</code></td><td>Plan and orchestrate multi-session development</td><td><span class="badge b-own">original</span></td></tr>
-  <tr><td><code>dev-loop</code></td><td>Auto-repeat the session loop to completion</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>dev</code></td><td>Build the work flowchart and orchestrate task-by-task execution</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>dev-loop</code></td><td>Auto-repeat the task execution loop to completion</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>impl</code></td><td>Feature/refactor orchestration</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>adr</code></td><td>Architecture decision records</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>tdd-workflow</code></td><td>Enforce TDD (unit/integration/E2E coverage)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
