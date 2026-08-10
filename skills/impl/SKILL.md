@@ -181,7 +181,11 @@ PRD 완료 안내 후 세션을 종료한다. 같은 세션에서 설계(archite
 
 크기=대면 위임 프롬프트에 `ultra`를 포함한다(중은 미적용). 설계 단계(architect/synthesizer) 선행 스폰은 0단계 참조.
 
-1. planner 스폰, `03_plan.md` Write + 트랙 분할 결정 요청. `track_id`(A·B…)는 planner가 정하고, planner가 직접 `instructions/<track_id>.md`를 Write한다. 메인은 경로를 미리 만들지 않는다. 위임 프롬프트에 ① `00_prd.md`가 있으면 Read 지시 ② 위 "테스트 tier 판정" 3-tier 기준을 주입하고, `test_tier="bdd"` 트랙의 `instructions/<id>.md`는 behavior(Given-When-Then) 시나리오마다 독립 선행 RED-GREEN 단계로 쪼개 작성하도록, `test_tier="tested"` 트랙은 구현 단계 뒤에 사후 테스트 단계(정상 경로 + 위험·경계)를 두도록, `test_tier="none"` 트랙은 테스트 단계 없이 구현 단계만 쓰도록 지시한다(planner 정의는 수정하지 않고 프롬프트로만 주입). **③ `01_intent.md`에 `## 사용자 성공 조건`이 있으면 각 항목을 `03_plan.md`의 Success Criteria 섹션(없으면 신설)에 원문 그대로 포함하고, 각 조건에 대응하는 사용자 여정을 Testing Strategy의 E2E 골격에 최소 1개씩 배치하도록 지시한다.**
+1. planner 스폰, `03_plan.md` Write + 트랙 분할 결정 요청. `track_id`(A·B…)는 planner가 정하고, planner가 직접 `instructions/<track_id>.md`를 Write한다. 메인은 경로를 미리 만들지 않는다. 위임 프롬프트에 ① `00_prd.md`가 있으면 Read 지시 ② 위 "테스트 tier 판정" 3-tier 기준을 주입하고, `test_tier="bdd"` 트랙의 `instructions/<id>.md`는 behavior(Given-When-Then) 시나리오마다 독립 선행 RED-GREEN 단계로 쪼개 작성하도록, `test_tier="tested"` 트랙은 구현 단계 뒤에 사후 테스트 단계(정상 경로 + 위험·경계)를 두도록, `test_tier="none"` 트랙은 테스트 단계 없이 구현 단계만 쓰도록 지시한다(planner 정의는 수정하지 않고 프롬프트로만 주입). **③ `01_intent.md`에 `## 사용자 성공 조건`이 있으면 각 항목을 `03_plan.md`의 Success Criteria 섹션(없으면 신설)에 원문 그대로 포함하고, 각 조건에 대응하는 사용자 여정을 Testing Strategy의 E2E 골격에 최소 1개씩 배치하도록 지시한다.** **④ `instructions/<id>.md`와 `03_plan.md`의 Success Criteria에 단위 트랙의 테스트 실행 범위를 적을 때는 변경 범위 테스트로 한정하도록 지시한다 — 전체 스위트는 5단계 통합, e2e는 7단계가 단독으로 수행한다.**
+
+> **Do:** 단위 트랙 완료 조건을 "변경 범위 테스트 통과"로 쓰게 한다
+> **Don't:** 완료 조건에 인자 없는 전체 실행("전량 통과")을 넣거나, e2e 실행 여부 판단을 트랙 지시문에 남긴다
+
 2. planner 보고 `state_delta`에 `tracks[]`(트랙별 `id`·모델·지시문 경로·`needs_security_review`·`test_tier`) 포함.
 3. 회수 후 메인이 state.json에 머지. 메인은 planner의 `state_delta.tracks[].id`를 그대로 사용한다.
 
