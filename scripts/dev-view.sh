@@ -2,10 +2,14 @@
 # dev-view.sh — /dev-loop 작업 tmux 세션들을 한 창에 분할해 실시간으로 비춘다(읽기 전용 미러).
 #
 # 사용법:
-#   dev-view.sh                 대상 세션(dev-*)을 자동 수집해 뷰어를 구성하고 창을 띄운다
-#   dev-view.sh dev-n1 dev-n2   대상 세션을 직접 지정
-#   dev-view.sh --sync [세션…]  창은 띄우지 않고 pane 구성만 맞춘다. 대상이 없으면 뷰어를 닫는다
-#   dev-view.sh --close         뷰어 세션을 종료한다
+#   dev-view.sh                 도는 dev-* 세션을 모두 비추고 창을 띄운다 (프로젝트 무관)
+#   dev-view.sh --sync          창은 띄우지 않고 pane 구성만 맞춘다
+#   dev-view.sh --close         뷰어 세션을 종료한다 (도는 작업 세션이 없을 때만)
+#   dev-view.sh --name N3       이 프로젝트의 노드 N3용 작업 세션명을 출력한다
+#
+# 작업 세션명에 프로젝트 슬러그가 들어가므로(dev-<프로젝트>-<노드>) 프로젝트 간
+# 이름이 겹치지 않는다. 그래서 대상은 항상 tmux에 살아 있는 dev-* 전부로 잡는다 —
+# 어느 프로젝트에서 불러도 한 창에서 모든 프로젝트의 작업 세션이 보인다.
 #
 # 환경변수:
 #   DEV_VIEW_SESSION  뷰어 tmux 세션명 (기본 dev-view)
@@ -28,12 +32,31 @@ TERM_APP="${DEV_VIEW_TERM:-auto}"
 WIN_COLS="${DEV_VIEW_COLS:-180}"
 WIN_ROWS="${DEV_VIEW_ROWS:-48}"
 
-# 세션명은 tmux 명령 문자열·AppleScript 소스에 삽입되므로 영숫자·`_`·`-`로 제한한다.
+# 뷰어 세션명(DEV_VIEW_SESSION)은 tmux 명령 문자열·AppleScript 소스에 삽입되므로
+# 영숫자·`_`·`-`로 제한한다. 미러 대상 세션명은 tmux가 준 값이라 이 검사를 거치지 않는다.
 valid_name() {
   case "$1" in
     ""|*[!A-Za-z0-9_-]*) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+# 현재 디렉토리가 속한 저장소의 이름을 세션명에 쓸 수 있는 슬러그로 만든다.
+# 워크트리에서 불러도 --git-common-dir이 메인 저장소를 가리키므로 같은 값이 나온다.
+# 슬러그는 폴더명만 보므로, 경로가 다른 두 저장소가 같은 폴더명을 쓰면 세션명이 겹친다
+# (그런 저장소를 동시에 돌리지 않는다는 전제다).
+project_slug() {
+  gitdir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+  root=""
+  [ -n "$gitdir" ] && root="$(cd "$(dirname "$gitdir")" 2>/dev/null && pwd)"
+  [ -n "$root" ] || root="$PWD"
+  slug="$(basename "$root" | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//' | cut -c1-16 | sed 's/-$//')"
+  # 폴더명이 한글뿐이면 슬러그가 통째로 비므로 경로 해시로 대신한다.
+  if [ -z "$slug" ]; then
+    slug="p$(printf '%s' "$root" | { md5 -q 2>/dev/null || md5sum 2>/dev/null; } | cut -c1-6)"
+  fi
+  printf '%s' "$slug"
 }
 
 # tmux가 pane 안에서 다시 셸로 파싱하는 문자열이라 각 인자를 이스케이프해 넘긴다.
@@ -47,13 +70,40 @@ if [ "${1:-}" = "--mirror" ]; then
   exec python3 "$MIRROR" "${2:?mirror target required}" "$INTERVAL"
 fi
 
+# ---------------------------------------------------------------- 이름 모드
+# 뷰어 세션을 건드리지 않으므로 DEV_VIEW_SESSION 검사보다 앞에 둔다.
+if [ "${1:-}" = "--name" ]; then
+  node="$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')"
+  if [ -z "$node" ]; then
+    echo "노드 ID가 필요합니다 (영문·숫자 포함): dev-view.sh --name N3" >&2
+    exit 2
+  fi
+  printf 'dev-%s-%s\n' "$(project_slug)" "$node"
+  exit 0
+fi
+
 if ! valid_name "$VIEW_SESSION"; then
   echo "DEV_VIEW_SESSION은 영문·숫자·_·-만 쓸 수 있습니다: $VIEW_SESSION" >&2
   exit 2
 fi
 
+# 지금 살아 있는 작업 세션 목록.
+# 뷰어 세션에는 @dev-view 표식을 달아 두므로 그것으로 걸러 자기 화면을 되비추지 않는다
+# (표식이 없던 예전 뷰어를 위해 기본 이름 dev-view도 함께 뺀다).
+live_sessions() {
+  tmux list-sessions -F '#{session_name}|#{@dev-view}' 2>/dev/null \
+    | awk -F'|' '$2 == "" { print $1 }' \
+    | grep -E '^dev-' | grep -Fxv "$VIEW_SESSION" | grep -Fxv 'dev-view'
+}
+
 # ---------------------------------------------------------------- 종료 모드
 if [ "${1:-}" = "--close" ]; then
+  # 다른 프로젝트가 아직 세션을 돌리고 있으면 창은 그쪽 몫이다.
+  remaining="$(live_sessions)"
+  if [ -n "$remaining" ]; then
+    echo "도는 작업 세션이 있어 뷰어를 닫지 않습니다: $(printf '%s' "$remaining" | tr '\n' ' ')" >&2
+    exit 1
+  fi
   tmux kill-session -t "=$VIEW_SESSION" 2>/dev/null && echo "뷰어 세션 종료: $VIEW_SESSION" || echo "뷰어 세션 없음"
   exit 0
 fi
@@ -65,21 +115,12 @@ if [ "${1:-}" = "--sync" ]; then
 fi
 
 # ---------------------------------------------------------------- 대상 수집
-targets=""
+# 대상은 언제나 "지금 살아 있는 dev-* 세션 전부"다. 세션명이 프로젝트별로 갈리므로
+# 목록을 받아 걸러낼 이유가 없고, 목록으로 거르면 다른 프로젝트 pane을 지우게 된다.
 if [ $# -gt 0 ]; then
-  for t in "$@"; do
-    if valid_name "$t"; then
-      targets="$targets$t
-"
-    else
-      echo "세션명으로 쓸 수 없어 건너뜁니다: $t" >&2
-    fi
-  done
-else
-  targets="$(tmux list-sessions -F '#{session_name}' 2>/dev/null \
-    | grep -E '^dev-' | grep -Fxv "$VIEW_SESSION")"
+  echo "세션명 인자는 무시합니다 — 도는 dev-* 세션을 모두 비춥니다: $*" >&2
 fi
-targets="$(printf '%s' "$targets" | sed '/^$/d')"
+targets="$(live_sessions | sed '/^$/d')"
 
 if [ -z "$targets" ]; then
   # 작업 세션이 잠시 비는 것은 오류가 아니다. 창은 마지막 화면을 띄운 채 두고,
@@ -93,6 +134,26 @@ if [ -z "$targets" ]; then
 fi
 
 # ---------------------------------------------------------------- 뷰어 구성
+# 프로젝트별 메인 세션이 동시에 부를 수 있으므로 pane을 만들고 지우는 구간만 잠근다.
+# 잠금이 남아 있어도 약 6초 뒤엔 그냥 진행한다 — 미러 창 때문에 멈춰 설 이유는 없다.
+LOCK="${TMPDIR:-/tmp}/dev-view.lock"
+HELD=0
+tries=0
+while [ "$HELD" = 0 ] && [ "$tries" -lt 20 ]; do
+  if mkdir "$LOCK" 2>/dev/null; then
+    HELD=1
+  else
+    # 잠금을 쥔 채 죽은 프로세스가 남긴 고아 잠금은 30초 뒤 회수한다.
+    # 그러지 않으면 이후 모든 호출이 영영 잠금을 못 얻는다.
+    age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || date +%s) ))
+    [ "$age" -gt 30 ] && rmdir "$LOCK" 2>/dev/null
+    tries=$((tries + 1))
+    sleep 0.3
+  fi
+done
+[ "$HELD" = 1 ] || echo "뷰어 잠금을 얻지 못해 그대로 진행합니다 — pane이 겹쳐 보이면 다시 실행하세요." >&2
+trap '[ "$HELD" = 1 ] && rmdir "$LOCK" 2>/dev/null' EXIT
+
 if ! tmux has-session -t "=$VIEW_SESSION" 2>/dev/null; then
   first="$(printf '%s\n' "$targets" | head -1)"
   tmux new-session -d -s "$VIEW_SESSION" -x 200 -y 50 "$(mirror_cmd "$first")"
@@ -103,6 +164,9 @@ if ! tmux has-session -t "=$VIEW_SESSION" 2>/dev/null; then
   tmux set-option -t "=$VIEW_SESSION:" status-left " $VIEW_SESSION (읽기 전용) " >/dev/null
   tmux set-option -t "=$VIEW_SESSION:" mouse on >/dev/null
 fi
+
+# 뷰어 표식. 예전 이름으로 떠 있던 뷰어에도 매번 다시 달아 둔다.
+tmux set-option -t "=$VIEW_SESSION:" @dev-view 1 >/dev/null 2>&1
 
 # 사라진 대상의 pane 제거 (pane이 2개 이상일 때만 — 마지막 하나는 남긴다)
 tmux list-panes -t "=$VIEW_SESSION:" -F '#{pane_title}' 2>/dev/null | while IFS= read -r s; do
@@ -126,6 +190,9 @@ printf '%s\n' "$targets" | while IFS= read -r s; do
 done
 
 tmux select-layout -t "=$VIEW_SESSION:" "$LAYOUT" >/dev/null
+
+# pane 조작이 끝났으니 창을 띄우기 전에 잠금을 놓는다.
+[ "$HELD" = 1 ] && { rmdir "$LOCK" 2>/dev/null; HELD=0; }
 
 [ "$OPEN_WINDOW" = "0" ] && { echo "뷰어 동기화 완료: $VIEW_SESSION"; exit 0; }
 
