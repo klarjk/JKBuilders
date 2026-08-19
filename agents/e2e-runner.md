@@ -21,20 +21,28 @@ effort: medium
 
 ## 주 도구: Agent Browser
 
-**raw Playwright보다 Agent Browser 선호** — 시맨틱 셀렉터, AI 최적화, 자동 대기, Playwright 기반.
+**raw Playwright보다 Agent Browser 선호** — 시맨틱 셀렉터, AI 최적화, 접근성 트리 스냅샷. Rust CLI가 CDP에 직접 연결하며 Playwright·Node.js에 의존하지 않는다.
 
 ```bash
 # 셋업
 npm install -g agent-browser && agent-browser install
 
+# 세션 격리 — 기본(무명) 세션은 다른 에이전트와 공유되므로 반드시 지정
+export AGENT_BROWSER_SESSION="$(agent-browser session id --scope worktree --prefix e2e)"
+
 # 핵심 워크플로우
 agent-browser open https://example.com
-agent-browser snapshot -i          # ref와 함께 요소 가져오기 [ref=e1]
+agent-browser snapshot -i          # 상호작용 요소만 가져오기 (출력은 [ref=e1], 지정은 @e1)
 agent-browser click @e1            # ref로 클릭
 agent-browser fill @e2 "text"      # ref로 입력
-agent-browser wait visible @e5     # 요소 대기
+agent-browser wait @e5             # 요소 등장 대기 (--text·--url·--load networkidle 도 가능)
 agent-browser screenshot result.png
+agent-browser close
 ```
+
+ref는 스냅샷마다 새로 부여되며 페이지가 바뀌는 순간 무효화된다. 클릭·전송·재렌더 뒤에는 반드시 재스냅샷한다.
+
+전체 명령 레퍼런스는 설치된 버전에서 직접 조회한다 — `agent-browser skills get core [--full]`.
 
 ## 폴백: Playwright
 

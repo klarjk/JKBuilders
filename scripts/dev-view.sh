@@ -6,10 +6,11 @@
 #   dev-view.sh --sync          창은 띄우지 않고 pane 구성만 맞춘다
 #   dev-view.sh --close         뷰어 세션을 종료한다 (도는 작업 세션이 없을 때만)
 #   dev-view.sh --name N3       이 프로젝트의 노드 N3용 작업 세션명을 출력한다
+#   dev-view.sh --peer-name DIR 이 프로젝트에서 DIR로 거는 협업 세션명을 출력한다
 #
-# 작업 세션명에 프로젝트 슬러그가 들어가므로(dev-<프로젝트>-<노드>) 프로젝트 간
-# 이름이 겹치지 않는다. 그래서 대상은 항상 tmux에 살아 있는 dev-* 전부로 잡는다 —
-# 어느 프로젝트에서 불러도 한 창에서 모든 프로젝트의 작업 세션이 보인다.
+# 작업 세션명에 프로젝트 슬러그가 들어가므로(dev-<프로젝트>-<노드>, peer-<대상>-<요청자>)
+# 프로젝트 간 이름이 겹치지 않는다. 그래서 대상은 항상 tmux에 살아 있는 dev-*·peer-*
+# 전부로 잡는다 — 어느 프로젝트에서 불러도 한 창에서 모든 작업·협업 세션이 보인다.
 #
 # 환경변수:
 #   DEV_VIEW_SESSION  뷰어 tmux 세션명 (기본 dev-view)
@@ -46,10 +47,13 @@ valid_name() {
 # 슬러그는 폴더명만 보므로, 경로가 다른 두 저장소가 같은 폴더명을 쓰면 세션명이 겹친다
 # (그런 저장소를 동시에 돌리지 않는다는 전제다).
 project_slug() {
-  gitdir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
-  root=""
-  [ -n "$gitdir" ] && root="$(cd "$(dirname "$gitdir")" 2>/dev/null && pwd)"
-  [ -n "$root" ] || root="$PWD"
+  base="${1:-$PWD}"
+  root="$(cd "$base" 2>/dev/null && {
+    gitdir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+    [ -n "$gitdir" ] && cd "$(dirname "$gitdir")" 2>/dev/null && pwd
+  })"
+  [ -n "$root" ] || root="$(cd "$base" 2>/dev/null && pwd)"
+  [ -n "$root" ] || root="$base"
   slug="$(basename "$root" | tr '[:upper:]' '[:lower:]' \
     | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//' | cut -c1-16 | sed 's/-$//')"
   # 폴더명이 한글뿐이면 슬러그가 통째로 비므로 경로 해시로 대신한다.
@@ -82,6 +86,17 @@ if [ "${1:-}" = "--name" ]; then
   exit 0
 fi
 
+# 협업 세션명 모드. 대상 프로젝트와 요청자를 모두 담아 상대가 같아도 요청자별로 갈린다.
+if [ "${1:-}" = "--peer-name" ]; then
+  target="${2:-}"
+  if [ -z "$target" ] || [ ! -d "$target" ]; then
+    echo "대상 프로젝트 디렉토리가 필요합니다: dev-view.sh --peer-name /path/to/project" >&2
+    exit 2
+  fi
+  printf 'peer-%s-%s\n' "$(project_slug "$target")" "$(project_slug)"
+  exit 0
+fi
+
 if ! valid_name "$VIEW_SESSION"; then
   echo "DEV_VIEW_SESSION은 영문·숫자·_·-만 쓸 수 있습니다: $VIEW_SESSION" >&2
   exit 2
@@ -93,7 +108,7 @@ fi
 live_sessions() {
   tmux list-sessions -F '#{session_name}|#{@dev-view}' 2>/dev/null \
     | awk -F'|' '$2 == "" { print $1 }' \
-    | grep -E '^dev-' | grep -Fxv "$VIEW_SESSION" | grep -Fxv 'dev-view'
+    | grep -E '^(dev|peer)-' | grep -Fxv "$VIEW_SESSION" | grep -Fxv 'dev-view'
 }
 
 # ---------------------------------------------------------------- 종료 모드
@@ -115,10 +130,10 @@ if [ "${1:-}" = "--sync" ]; then
 fi
 
 # ---------------------------------------------------------------- 대상 수집
-# 대상은 언제나 "지금 살아 있는 dev-* 세션 전부"다. 세션명이 프로젝트별로 갈리므로
+# 대상은 언제나 "지금 살아 있는 dev-*·peer-* 세션 전부"다. 세션명이 프로젝트별로 갈리므로
 # 목록을 받아 걸러낼 이유가 없고, 목록으로 거르면 다른 프로젝트 pane을 지우게 된다.
 if [ $# -gt 0 ]; then
-  echo "세션명 인자는 무시합니다 — 도는 dev-* 세션을 모두 비춥니다: $*" >&2
+  echo "세션명 인자는 무시합니다 — 도는 dev-*·peer-* 세션을 모두 비춥니다: $*" >&2
 fi
 targets="$(live_sessions | sed '/^$/d')"
 
@@ -126,10 +141,10 @@ if [ -z "$targets" ]; then
   # 작업 세션이 잠시 비는 것은 오류가 아니다. 창은 마지막 화면을 띄운 채 두고,
   # 다음 노드가 뜰 때 갱신한다. 창을 접는 것은 --close의 몫이다.
   if [ "$OPEN_WINDOW" = "0" ]; then
-    echo "비출 dev-* 세션이 없습니다 — 뷰어는 마지막 화면으로 둡니다."
+    echo "비출 dev-*·peer-* 세션이 없습니다 — 뷰어는 마지막 화면으로 둡니다."
     exit 0
   fi
-  echo "비출 dev-* 세션이 없습니다." >&2
+  echo "비출 dev-*·peer-* 세션이 없습니다." >&2
   exit 1
 fi
 
