@@ -74,6 +74,14 @@ description: 아키텍처 결정을 ADR 문서로 작성하는 스킬. 설계 �
 ## ADR 표준 구조
 
 ```markdown
+---
+title: <결정 제목>
+status: <Accepted|Proposed|Superseded|Deprecated|Rejected>
+created: YYYY-MM-DD
+project: <프로젝트명>
+tags: [adr]
+---
+
 # ADR-NNN: <결정 제목>
 
 ## Context
@@ -105,4 +113,5 @@ YYYY-MM-DD
 ## 주의사항
 
 - **날짜는 현재 세션 컨텍스트의 날짜**를 쓴다(추측 금지).
+- **frontmatter `status`에는 한 낱말만** 적는다(`Accepted`·`Proposed`·`Superseded`·`Deprecated`·`Rejected`). 조건·개정 이력은 본문 `## Status`에 적고, 상태가 바뀌면 둘을 함께 고친다.
 - **잔존 단점을 최소 1건 남긴다** — 모든 단점을 "완화"로 봉합한 ADR은 신뢰도가 떨어진다.
