@@ -55,12 +55,14 @@ description: 아키텍처 결정을 ADR 문서로 작성하는 스킬. 설계 �
 
 ### Phase 2B — synthesizer 검증 (난이도 중·상)
 
-1. `synthesizer` 에이전트를 `subagent_type="synthesizer"`로 스폰한다. 프롬프트에 결정할 문제·배경·후보안·제약을 전달하고, **ADR을 파일로 쓰지 말고 응답 본문으로 반환**하라고 지시한다(저장은 메인이 Phase 3에서 수행).
-2. synthesizer가 반환한 ADR 본문(+수렴 요약)을 받는다.
-3. Phase 3으로 진행 — synthesizer 반환 본문을 ADR 파일 내용으로 사용한다.
+1. `synthesizer` 에이전트를 `subagent_type="synthesizer"`로 스폰한다. 프롬프트에 결정할 문제·배경·후보안·제약을 전달하고, **ADR 본문을 스크래치패드 파일에 Write한 뒤 회신에는 경로와 수렴 요약만 담으라**고 지시한다. 자식(architect·critic)에게도 같은 방식을 쓰라고 함께 지시한다.
+2. 회신받은 경로를 Read해 ADR 본문을 회수한다.
+3. Phase 3으로 진행 — 회수한 본문을 ADR 파일 내용으로 사용한다.
 
 - **Do:** synthesizer **하나만** 스폰한다. synthesizer가 내부에서 architect·critic을 스폰·수렴한다.
-- **Don't:** architect·critic을 메인이 직접 스폰하지 않는다(수렴 오케스트레이션은 synthesizer 담당).
+- **Don't:** architect·critic을 메인이 직접 스폰하지 않는다(수렴 오케스트레이션은 synthesizer 담당). 긴 산출을 회신 본문으로 받는다(잘린다).
+
+**손자 산출 오통지.** architect·critic의 산출이 synthesizer를 건너뛰고 메인에 배달될 수 있다 — 발신자가 synthesizer가 아니면 이 상황이고, 같은 내용의 반복 도착이 추가 확증이다. 받은 산출을 스크래치패드에 저장해 경로를 `SendMessage`로 넘기고, 통지 결함이므로 재요청을 멈추라고 명시해 재개시킨다. 응답이 없다고 synthesizer를 버리고 재스폰하거나 메인이 ADR을 직접 쓰지 않는다. 실행 전 `~/.claude/memory/feedback_misrouted_result_relay_to_parent.md`를 Read해 적용한다.
 
 ### Phase 3 — 저장
 
