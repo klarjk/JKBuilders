@@ -31,6 +31,7 @@
   .sub{color:var(--muted); margin:0 0 28px; font-size:16px}
   h2{font-size:22px; margin:44px 0 14px; padding-bottom:8px; border-bottom:2px solid var(--line)}
   h3{font-size:17px; margin:26px 0 8px}
+  h4{font-size:15px; margin:22px 0 8px; color:var(--muted); font-weight:700}
   p{margin:.5em 0}
   a{color:var(--devloop)}
   code{background:var(--code-bg); padding:1px 6px; border-radius:5px; font-size:.88em; font-family:"SF Mono",ui-monospace,Menlo,monospace}
@@ -78,7 +79,7 @@
 <div class="cards">
   <div class="card" style="--c:var(--devloop)">
     <h4>/dev-loop family</h4>
-    <p>Multi-session dev orchestration. Lays the work out as a flowchart, then loops research → design → build → review to completion.</p>
+    <p>Multi-session dev orchestration. Lays the work out as a flowchart and loops to completion. Three-tier sessions + Telegram remote control.</p>
     <div class="cmd">/dev · /dev-loop · /impl · /adr</div>
   </div>
   <div class="card" style="--c:var(--prp)">
@@ -119,7 +120,7 @@
 </div>
 <ul>
   <li><b>/dev</b> — Builds a development plan (DEV_PLAN) interactively. It lays the whole job out as a <b>work flowchart</b>, then runs whichever tasks have their prerequisites met.</li>
-  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. Planning, research, and design happen directly; implementation runs in an isolated runner.</li>
+  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. The orchestrating role moves into its own session that gets swapped out when it fills up, and each task is handed to an isolated session.</li>
   <li><b>/impl</b> — Takes one feature or refactor and runs the design → plan → build → review agent chain automatically.</li>
   <li><b>/adr</b> — Records an architecture decision. Easy calls are handled directly; hard ones go to a design + critique convergence agent.</li>
 </ul>
@@ -157,14 +158,57 @@ N2 experiment┘        ↑
   <li>If e2e fails, the failing flow's files are matched against the "owned files" column to pin down which build caused it, and only that one re-runs. If the match is inconclusive, it reports to you rather than guessing.</li>
 </ul>
 
-<h3>/dev-loop — how the automatic loop differs</h3>
-<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you — and it decides how to handle each task by <b>looking at its kind first</b>.</p>
+<h3>/dev-loop — it swaps sessions out and keeps going</h3>
+<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you. But <b>the session running the loop fills up too.</b> So the orchestrating role is moved off your screen into its own session, and <b>when that session fills up it is replaced wholesale.</b></p>
+
+<h4>Three tiers</h4>
+<table>
+  <tr><th>Tier</th><th>Where it runs</th><th>What it owns</th><th>What it doesn't</th></tr>
+  <tr><td><b>Counter</b></td><td>The screen you're talking to</td><td>Spawning, replacing, and relaying for the commander. The initial planning session when no plan exists yet</td><td>Task judgment, delegation/collection, plan updates</td></tr>
+  <tr><td><b>Commander</b></td><td>One separate terminal session (tmux)</td><td>Delegating, collecting, judging tasks; updating and committing the plan; <b>measuring its own context</b></td><td>Replacing itself, irreversible operations</td></tr>
+  <tr><td><b>Worker</b></td><td>One session per task (tmux)</td><td>Building and committing inside its own isolated workspace, then reporting</td><td>Writing the plan (read-only), edits outside its workspace</td></tr>
+</table>
+<div class="flow">
+  <span class="step">Counter · confirm plan</span><span class="arw">→</span>
+  <span class="step">spawn commander</span><span class="arw">→</span>
+  <span class="step">delegate · collect</span><span class="arw">→</span>
+  <span class="step">counter swaps a full commander</span><span class="arw">→</span>
+  <span class="step">done</span>
+</div>
+<p><b>The counter doesn't judge, and the commander doesn't pretend it won't die.</b> The moment the counter starts reading into the plan it fills up at the same rate, and splitting the tiers stops meaning anything. So the counter passes the commander's words to you verbatim and your answer back verbatim — no summarizing, no adjudicating.</p>
+
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Replacement is not resumption</b> · At the <b>soft limit</b> the commander stops sending out new work, collects only what is in flight, wraps up, and asks to be replaced. At the <b>hard limit</b> it gives up collecting too, records progress, and leaves. The counter kills that session and spawns a <b>brand-new one</b> — resuming the same session would restore the whole conversation and relieve nothing. Instead the <b>handover is banked into the plan continuously</b>, so whenever it is cut off the next commander picks up from the plan alone.</div>
+<p style="font-size:13px;color:var(--muted)">The limits are measured in <b>absolute tokens</b>, not percentages — soft at <b>200,000</b>, hard at <b>300,000</b>. Cutting well short of a one-million-token window is a <b>cost and judgment-quality</b> decision, not a capacity one. The measurement happens at two points — right before new work is sent out, and right after a Telegram answer lands — and the verdict is a <b>numeric comparison</b>, not a model judgment.</p>
+
+<h4>It runs while you're away — Telegram</h4>
+<p>Nobody sits in front of the commander. Anything printed to its screen reaches no one. So whatever needs a human is carried out over Telegram by the <b>postman</b> (<code>skills/postman/</code>).</p>
 <ul>
-  <li><b>Build tasks</b> → one <b>isolated runner</b> is spawned per task. The build details never accumulate in the main conversation, which conserves context.</li>
-  <li><b>Everything else</b> (research, experiment, design, visual design, operation) → handed to <code>/dev</code>, one task at a time, so the planning logic isn't duplicated in two places.</li>
+  <li>Sessions know nothing about Telegram — they only <b>write files into their own mailbox.</b> The postman reads them, sends them out, and <b>injects your reply straight into that session's screen.</b></li>
+  <li>Questions with choices go out as <b>inline buttons</b>. Pressing one types that label into the session. Pressing the same button twice still executes <b>once</b>.</li>
+  <li>Everything outbound passes a single <b>masking gate</b> — secret-shaped values, secret-shaped names, and the contents of any file registered in <code>never_send</code> are stripped.</li>
+  <li><b>Irreversible actions can't be unlocked by a button either.</b> What a human reads remotely is a truncated summary, and approving a deploy or a data migration off a summary throws away the point of the gate.</li>
 </ul>
-<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">The auto loop runs one at a time</b> · Even when the plan lays builds out in parallel, the automatic loop runs them <b>sequentially</b>. Relaying with a runner takes six to ten round trips per task, so running several at once risks dropped signals. If you genuinely need parallel builds, drive it with <code>/dev</code> instead.</div>
-<p style="font-size:13px;color:var(--muted)">There are stop guards too. Once a single call accumulates 3 non-build tasks or finishes 5 builds, it saves and commits the plan, tells you to continue in a fresh session, and stops. If runner delegation fails twice in a row, main handles that one task directly and says so in one line — isolation is given up, but progress isn't.</p>
+<div class="note"><b>The postman is optional</b> · <code>/dev-loop</code> runs fine without it — questions just appear on screen only, and you have to be at the desk. See <b>Optional setup — Telegram</b> below for installation and tokens.</div>
+
+<h4>Running things in parallel</h4>
+<p>When several tasks are ready, the eligible ones run <b>up to three at a time</b>. Eligibility needs both conditions — ① the files each will touch don't overlap, and ② their tests don't grab the same port, the same DB file, or the same external service at once. If either is uncertain, they run sequentially.</p>
+<p style="font-size:13px;color:var(--muted)">To run two or more build tasks at once, the plan must contain a <b>join task</b> whose prerequisites are all of them. If it doesn't, the commander adds that box to the plan first and then starts.</p>
+
+<h4>Clearing the backlog — <code>--followup</code></h4>
+<p>Development keeps pushing "things to fix later" outside the plan. <code>/dev-loop --followup</code> gathers those loose ends into a <b>follow-up ledger</b> and clears it <b>in parallel</b> through the same three tiers.</p>
+<ul>
+  <li><b>Harvesting, triage, and grouping happen at the counter</b> — every item needs your approval, and there is nowhere but the screen you're on to do that.</li>
+  <li><b>Clearing happens at the commander.</b> All the counter hands over is the ledger path and the approved scope — <b>two lines.</b></li>
+  <li>Follow-up items have almost no ordering dependencies and are already split by the files they land in, so they <b>parallelize better than plan nodes</b> — three at a time by default, four when they're light.</li>
+</ul>
+<p style="font-size:13px;color:var(--muted)">Feature additions found outside the approved scope are not built; they're recorded as "held" in the ledger and reported together when the run ends. Approval is handled by the triage step of the next <code>--followup</code> call.</p>
+
+<h4>What happens when something jams</h4>
+<ul>
+  <li><b>Worker delegation fails</b> → retried once; if it still fails, the commander handles that one task directly. Isolation is given up, progress isn't.</li>
+  <li><b>Commander spawn fails</b> → retried once with an ordinary (heavier) configuration. If that fails too, <b>the counter doubles as the commander</b> and drives the loop itself (giving up the unbounded loop).</li>
+  <li><b>Two consecutive replacements for the same reason</b> → there is no third. It tells you and stops, so a cause that replacement can't fix — a broken measurement wire, say — doesn't spin the replacement loop.</li>
+</ul>
 
 <h3>/impl — the workflow adapts automatically to the size of the work</h3>
 <p>impl first judges the <b>scale</b> of the request, then picks an agent setup to match. It won't wrap a tiny change in heavy process, and it layers design and verification thickly onto big ones.</p>
@@ -203,11 +247,13 @@ N2 experiment┘        ↑
 <table>
   <tr><th>Skill</th><th>Role</th><th>Origin</th></tr>
   <tr><td><code>dev</code></td><td>Build the work flowchart and orchestrate task-by-task execution</td><td><span class="badge b-own">original</span></td></tr>
-  <tr><td><code>dev-loop</code></td><td>Auto-repeat the task execution loop to completion</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>dev-loop</code></td><td>Auto-repeat and parallelize the execution loop across three session tiers (<code>--followup</code> clears the backlog)</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>impl</code></td><td>Feature/refactor orchestration</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>adr</code></td><td>Architecture decision records</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>tdd-workflow</code></td><td>Enforce TDD (unit/integration/E2E coverage)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
+  <tr><td><code>postman</code></td><td>Telegram relay — carries questions out and injects answers back into the session screen <span style="color:var(--muted)">(optional)</span></td><td><span class="badge b-own">original</span></td></tr>
 </table>
+<p style="font-size:13px;color:var(--muted)"><code>postman</code> is not a slash command but a <b>Python program you run alongside</b>. <code>/dev-loop</code> checks whether it's alive at start-up and launches it if not. If it isn't installed, that step is skipped with a one-line "no Telegram channel" notice and the run continues.</p>
 
 <h3>Components — agents</h3>
 <table>
@@ -287,30 +333,68 @@ N2 experiment┘        ↑
 <p>This repo is built for Claude Code itself, so let Claude handle the install. After cloning, ask your own Claude something like this.</p>
 <p><b>Full install</b></p>
 <pre><code>Port the workflows in this JKBuilders repo into my Claude Code system.
-Copy agents/ · commands/ · skills/ · rules/ · rules-detail/ into the matching
-locations under my ~/.claude/ , and merge the trigger definitions in
+Copy agents/ · commands/ · skills/ · rules/ · rules-detail/ · scripts/ into the
+matching locations under my ~/.claude/ , and merge the trigger definitions in
 triggers_CLAUDE.md into my global ~/.claude/CLAUDE.md . Tell me first if
 anything would collide with what I already have.</code></pre>
 <p><b>Install one family only</b> (e.g. just the /dev-loop family)</p>
 <pre><code>Port only the /dev-loop family from JKBuilders into my system.
-Install skills/dev · dev-loop · impl · adr · tdd-workflow and the agents/*
-they spawn, plus rules/ · rules-detail/ , under my ~/.claude/ , and merge the
-triggers in triggers_CLAUDE.md into my global CLAUDE.md .</code></pre>
+Install skills/dev · dev-loop · impl · adr · tdd-workflow · postman and the
+agents/* they spawn, plus rules/ · rules-detail/ · scripts/ , under my
+~/.claude/ , and merge the triggers in triggers_CLAUDE.md into my global
+CLAUDE.md . Then walk me through the "Required settings" section.</code></pre>
 
 <div class="note"><b>Before installing</b> · Each agent's frontmatter pins a <code>model: opus / sonnet / fable</code>. If your plan can't access that model, adjust it. The files also assume the <code>~/.claude/</code> path convention — install elsewhere and you must update the reference paths too.</div>
 
 <h3>Required settings — settings.json</h3>
-<p>This workflow assumes <b>sub-agent spawning · parallel tracks · nested convergence</b>. The two settings below in <code>~/.claude/settings.json</code> are <b>required</b>.</p>
+<p>This workflow assumes <b>sub-agent spawning · parallel tracks · nested convergence</b>. The three settings below in <code>~/.claude/settings.json</code> are <b>required</b>.</p>
 <pre><code>{
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
-  "worktree": { "baseRef": "head" }
+  "worktree": { "baseRef": "head" },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ~/.claude/scripts/status-writer.py"
+  }
 }</code></pre>
 <ul>
-  <li><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> — <b>Required.</b> Without this flag, <b>nested sub-spawning</b> (a sub-agent spawning yet another sub-agent) is impossible. <code>/dev-loop</code>'s isolated runner chain and <code>synthesizer</code>'s architect·critic convergence only work on top of it, so those steps fail when it's off.</li>
+  <li><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> — <b>Required.</b> Without this flag, <b>nested sub-spawning</b> (a sub-agent spawning yet another sub-agent) is impossible. <code>/impl</code>'s agent chain and <code>synthesizer</code>'s architect·critic convergence only work on top of it, so those steps fail when it's off.</li>
   <li><code>worktree.baseRef</code> — <b>Required.</b> The base commit used when impl's parallel tracks create isolated workspaces (worktrees).</li>
+  <li><code>statusLine</code> — <b>Required if you use <code>/dev-loop</code>.</b> Not decoration but <b>instrumentation</b>. The only source the commander has for measuring its own context is <code>~/.claude/status/&lt;session-id&gt;.json</code>, and that file is written by <b>your status line command</b>, not by Claude. Without it the commander can't see itself fill up, and a commander that can't see that misses its swap point.</li>
 </ul>
+<div class="note"><b>Already running your own status line?</b> · <b>Don't overwrite it</b> with the command above. Use <b>method ②</b> described in the header of <code>scripts/status-writer.py</code>: four lines at the very top of your existing script (before it reads stdin). It reads stdin on your script's behalf, records it, and puts it back, so your status line keeps working as before.</div>
+
+<h3>Optional setup — Telegram (the postman)</h3>
+<p>Connect the postman to keep the loop running while you're away from the desk. <b><code>/dev-loop</code> runs fine without it</b> — questions just appear on screen only, and you have to be there.</p>
+<ol>
+  <li><b>Create a bot.</b> Send <code>/newbot</code> to <code>@BotFather</code> on Telegram; once you pick a name and username it hands you a <b>single token line</b>.</li>
+  <li><b>Put the token in a file, nowhere else.</b> The default location is <code>~/.claude/dev-run/telegram-bot-token</code>; point <code>POSTMAN_TOKEN_FILE</code> elsewhere if you prefer.
+<pre><code>mkdir -p ~/.claude/dev-run
+install -m 600 /dev/null ~/.claude/dev-run/telegram-bot-token
+# open it in an editor and paste the single token line</code></pre>
+  <span style="font-size:13px;color:var(--muted)">Don't use <code>echo</code> — the token would sit in your shell history.</span></li>
+  <li><b>Look up your own user id.</b> Send your bot any 1:1 message, then run the snippet below to see <code>from.id</code>.
+<pre><code>python3 -c "import urllib.request,json,pathlib; \
+  t=pathlib.Path.home().joinpath('.claude/dev-run/telegram-bot-token').read_text().strip(); \
+  print(json.load(urllib.request.urlopen('https://api.telegram.org/bot'+t+'/getUpdates')))"</code></pre></li>
+  <li><b>Create the config at mode 600 first</b>, then fill it in with an editor — an editor creating it from scratch leaves it at 644.
+<pre><code>install -m 600 /dev/null ~/.claude/postman/config.json</code></pre>
+<pre><code>{
+  "allowed_user_ids": [123456789],
+  "chat_id": 123456789,
+  "never_send": ["~/private-notes.md"]
+}</code></pre></li>
+  <li><b>Verify.</b> Sweeps config, permissions, and token in one pass; touches no network. <b>Fix and re-run if it prints even one warning</b> — the exit code is 0 even with warnings, so read the count on the last line to judge a pass.
+<pre><code>python3 ~/.claude/skills/postman/postman/bot.py --check</code></pre></li>
+</ol>
+<div class="note" style="border-left-color:#c0392b"><b style="color:#c0392b">Two security musts</b><br>
+· <b>Don't leave <code>never_send</code> empty.</b> The postman <b>captures session screens</b> and sends them to Telegram. Register the paths of any plaintext personal files here so their contents can't ride out in a capture.<br>
+· <b>An empty <code>allowed_user_ids</code> discards every incoming update.</b> That's the safe default, but launching with it empty looks exactly like a silently dead channel.</div>
+<p style="font-size:13px;color:var(--muted)">The postman is <b>one per machine, one project at a time</b> — a Telegram bot has exactly one receiver, so two projects running at once intercept each other's messages. It's only needed while a dev loop is running, so it isn't registered as an always-on service and <b>retires itself</b> when the commander has been absent for a while. Full protocol and file layout live in <code>skills/postman/README.md</code>.</p>
+
+<h3>Optional setup — tmux</h3>
+<p><code>/dev-loop</code> launches its commander and worker sessions through tmux. Without <code>tmux</code> it stops at the pre-spawn check. <code>/dev</code> and <code>/impl</code> on their own don't need it.</p>
 
 <footer>
   <p><b>Credits</b></p>

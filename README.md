@@ -12,13 +12,15 @@ Claude Code에서 소프트웨어를 만들 때 쓰는 **워크플로우 도구 
 
 멀티세션 개발은 할 일을 한 줄로 늘어놓지 않고 **작업 흐름도(플로우차트)**로 배치합니다. 작업 하나하나가 흐름도의 칸이 되고 "무엇이 끝나야 시작할 수 있는가"로 이어지므로, 동시에 할 수 있는 일은 동시에 굴리고 결과에 따라 길이 갈리는 지점은 분기로 처리합니다.
 
+`/dev-loop`는 여기서 한 걸음 더 갑니다. **지휘 역할을 사용자와 붙어 있는 화면에서 떼어 별도 세션으로 옮기고, 그 세션이 대화 용량으로 가득 차면 통째로 갈아끼웁니다.** 갈아끼워도 계획이 이어지므로 대화 용량 한계 때문에 개발이 멈추지 않습니다. 그리고 **텔레그램으로 질문을 받고 답할 수 있어**, 자리를 비운 사이에도 루프가 계속 돕니다.
+
 ## 무엇이 들어있나요?
 
 네 갈래로 나뉩니다.
 
 | 갈래 | 하는 일 | 진입 명령 |
 |------|---------|-----------|
-| **/dev-loop 계열** | 멀티세션 개발 지휘 — 할 일을 작업 흐름도로 배치해 조사·설계·구현·리뷰를 완료까지 자동 반복 | `/dev` · `/dev-loop` · `/impl` · `/adr` |
+| **/dev-loop 계열** | 멀티세션 개발 지휘 — 할 일을 작업 흐름도로 배치해 조사·설계·구현·리뷰를 완료까지 자동 반복. 3계층 세션 + 텔레그램 원격 조작 | `/dev` · `/dev-loop` · `/impl` · `/adr` |
 | **/prp 계열** | 요구사항→계획→구현→PR로 이어지는 단발 개발 파이프라인 | `/prp-prd` · `/prp-plan` · `/prp-implement` · `/prp-pr` · `/prp-commit` |
 | **메모리 계열** | 스킬·에이전트가 스스로 배운 것을 다음 실행에서 기억하게 하는 자동 메모리 | `/add-memory` |
 | **기타** | 조건부 규칙 트리거 예시 등 | `triggers_CLAUDE.md` |
@@ -33,8 +35,8 @@ Claude Code에서 소프트웨어를 만들 때 쓰는 **워크플로우 도구 
 
 ```
 이 JKBuilders 저장소의 워크플로우를 내 Claude Code 시스템에 이식해줘.
-agents/ · commands/ · skills/ · rules/ · rules-detail/ 를 내 ~/.claude/ 아래
-대응 위치에 복사하고, triggers_CLAUDE.md 의 트리거 정의를 내 전역
+agents/ · commands/ · skills/ · rules/ · rules-detail/ · scripts/ 를 내 ~/.claude/
+아래 대응 위치에 복사하고, triggers_CLAUDE.md 의 트리거 정의를 내 전역
 ~/.claude/CLAUDE.md 에 병합해줘. 겹치는 항목이 있으면 먼저 알려줘.
 ```
 
@@ -42,10 +44,75 @@ agents/ · commands/ · skills/ · rules/ · rules-detail/ 를 내 ~/.claude/ �
 
 ```
 JKBuilders의 /dev-loop 계열만 내 시스템에 이식해줘.
-skills/dev · dev-loop · impl · adr · tdd-workflow 와 이들이 스폰하는
-agents/* , 그리고 rules/ · rules-detail/ 를 ~/.claude/ 아래에 설치하고,
+skills/dev · dev-loop · impl · adr · tdd-workflow · postman 과 이들이 스폰하는
+agents/* , 그리고 rules/ · rules-detail/ · scripts/ 를 ~/.claude/ 아래에 설치하고,
 triggers_CLAUDE.md 의 트리거를 내 전역 CLAUDE.md 에 병합해줘.
+설치 후 README 의 '설치 후 필수 설정' 항목을 순서대로 안내해줘.
 ```
+
+## 설치 후 필수 설정
+
+`/dev-loop` 계열은 아래 셋이 갖춰져야 온전히 돕니다. 나머지 계열(`/prp`·메모리)은 1번만 있으면 됩니다.
+
+### 1. settings.json
+
+```jsonc
+{
+  "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" },
+  "worktree": { "baseRef": "head" },
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ~/.claude/scripts/status-writer.py"
+  }
+}
+```
+
+- **`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — 서브에이전트가 다시 서브에이전트를 부르는 중첩 스폰을 켭니다. 없으면 `/impl`의 체인과 `synthesizer`의 수렴이 멈춥니다.
+- **`worktree.baseRef`** — 병렬 작업이 격리 작업 공간을 만들 때 기준으로 삼을 커밋입니다.
+- **`statusLine`** — 단순한 화면 장식이 아니라 **`/dev-loop`의 계측 배선**입니다. 지휘 세션이 자기 대화 용량을 재는 유일한 재료가 여기서 나오고, 이 값이 없으면 갈아끼울 시점을 놓칩니다. 이미 쓰는 상태줄 스크립트가 있다면 `scripts/status-writer.py` 머리말의 **②번 방식**으로 네 줄만 얹으세요.
+
+### 2. 텔레그램 연결 (선택 — 자리를 비울 때만 필요)
+
+우체부(`skills/postman/`)는 개발 세션의 질문을 텔레그램으로 보내고 답을 그 세션 화면에 되넣는 중계 프로그램입니다. **설치하지 않아도 `/dev-loop`는 그대로 돕니다** — 질문이 화면으로만 오고, 사용자가 자리에 있어야 할 뿐입니다.
+
+1. 텔레그램에서 `@BotFather`에게 `/newbot`으로 봇을 만들고 토큰을 받습니다.
+2. 토큰을 **파일에만** 넣습니다. 기본 자리는 `~/.claude/dev-run/telegram-bot-token`이고, 다른 자리에 두려면 `POSTMAN_TOKEN_FILE` 환경변수로 가리킵니다.
+
+   ```bash
+   mkdir -p ~/.claude/dev-run
+   install -m 600 /dev/null ~/.claude/dev-run/telegram-bot-token
+   # 편집기로 열어 토큰 한 줄만 붙여 넣습니다 (echo 는 셸 기록에 남습니다)
+   ```
+
+3. 만든 봇에게 1:1로 아무 말이나 보낸 뒤 자기 user id를 확인합니다(텔레그램 `getUpdates`의 `from.id`).
+
+4. 설정 파일을 **600으로 먼저 만들고** 편집기로 채웁니다 — 편집기가 기본으로 만들면 644로 남습니다.
+
+   ```bash
+   install -m 600 /dev/null ~/.claude/postman/config.json
+   ```
+
+   ```jsonc
+   {
+     "allowed_user_ids": [123456789],
+     "chat_id": 123456789,
+     "never_send": ["~/개인정보.md"]
+   }
+   ```
+
+5. 점검합니다. **주의가 1건이라도 찍히면 고치고 다시 돌립니다** — 종료코드는 주의가 있어도 0이라, 통과 여부는 출력 마지막 줄의 건수로 읽습니다.
+
+   ```bash
+   python3 ~/.claude/skills/postman/postman/bot.py --check
+   ```
+
+> ⚠️ **`never_send`를 비워 두지 마세요.** 우체부는 세션 화면을 캡처해 텔레그램으로 보냅니다. 평문 개인정보가 담긴 파일 경로를 여기 등록해야 그 내용이 화면에 실려 나가는 것을 막습니다. 허용 목록(`allowed_user_ids`)이 비면 모든 수신을 폐기하므로 통로가 조용히 죽습니다.
+
+자세한 규약·파일 구조는 `skills/postman/README.md`를 보세요.
+
+### 3. tmux
+
+`/dev-loop`는 지휘·작업 세션을 tmux로 띄웁니다. `tmux`가 없으면 스폰 전 검사에서 멈춥니다. `/dev`·`/impl` 단독 사용에는 필요 없습니다.
 
 ## 주의할 점
 
@@ -54,7 +121,7 @@ triggers_CLAUDE.md 의 트리거를 내 전역 CLAUDE.md 에 병합해줘.
 - **모델 지정에 주의.** 각 에이전트 앞머리에 `model: opus / sonnet / fable` 같은 지정이 있습니다. 본인 요금제에서 쓸 수 없는 모델이면 조정이 필요합니다.
 - **자동 메모리는 블록이 심어진 항목에서만** 동작합니다. `/add-memory`로 원하는 스킬·에이전트에 장착하세요.
 - **`/prp` 계열은 `.claude/PRPs/` 폴더**에 요구사항·계획·보고서를 쌓습니다.
-- **settings.json 필수 설정** — 이 워크플로우는 서브에이전트 스폰·병렬 트랙·중첩 수렴을 전제합니다. `~/.claude/settings.json`에 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`·`worktree.baseRef`를 설정하세요 (상세 설명서 참고).
+- **우체부는 한 기계에 하나, 한 프로젝트만** 맡습니다. 텔레그램 봇 하나에는 수신자가 하나뿐이라, 두 프로젝트를 동시에 돌리면 서로 메시지를 가로챕니다.
 
 ## 출처 / 크레딧
 
