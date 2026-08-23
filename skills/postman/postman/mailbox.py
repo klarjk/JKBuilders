@@ -8,6 +8,10 @@
       answer-g<세대>-NN.json         우체부가 쓰는 주입 기록 — **답 도착의 증거가 아니다**
       pending-<ts>.json             우체부가 쓰는 미주입 보관분 — **청소 대상 제외**
 
+**끝난 질문 교환은 네 파일이 한 묶음으로 사라진다** — 질문 본문·`.sent`·`.answered`·
+`answer-…`. 끝났다는 판정의 정본은 **응답 표식**이고, 표식이 없는 질문은 나이와 무관하게
+남는다 (`_sweep_finished`).
+
 **세대 접두(`g<세대>`)를 강제하는 이유**: 지휘 tmux명은 세대 불변(D9)이라 세대가 같은
 디렉토리를 공유하는데, 문맥 없는 새 지휘가 NN을 1부터 다시 매기면 **전 세대의 미해결
 질문을 덮어쓴다.** 세대 접두가 그 충돌을 이름 수준에서 없앤다.
@@ -126,8 +130,64 @@ def has_undelivered(sessions=None):
     return False
 
 
+def _sweep_finished(name, cutoff):
+    """끝난 질문 교환을 **한 묶음으로** 치운다 — 본문·`.sent`·`.answered`·`answer-…`.
+
+    **끝났다는 판정의 정본은 응답 표식이다.** 세션이 답을 받아 처리한 직후 자기 손으로
+    남긴 사실이라, 화면 판정처럼 "늦은 것"과 "안 먹은 것" 사이에서 흐려지지 않는다.
+    표식이 없는 질문은 **나이를 묻지 않고 남긴다** — 아직 답을 기다리는 질문을 오래됐다는
+    이유로 지우면 미답 질문이 조용히 사라지고, 사람은 자기가 답하지 않았다는 사실조차
+    모르게 된다. 무한 누적을 끊는 대가로 그것을 내주지 않는다.
+
+    나이를 세는 기준 시각도 **표식**의 mtime이다. 본문의 mtime은 질문을 발급한 시각이라,
+    하룻밤 넘겨 온 답(`answer_window` 기본 24시간)을 받은 교환이 답을 처리한 바로 그날
+    지워질 수 있다. 알림이 `.sent` 시각을 보는 것과 같은 규칙이다 — **끝난 시각부터 센다.**
+
+    보존 기한은 답을 아직 받아들이는 창(`answer_window`)보다 길어야 한다. 짧으면 수용
+    가능한 답이 왔을 때 열림 확인의 재료(`read_question`)가 이미 없어, 멀쩡한 답이
+    `not_open`으로 되돌아간다. 기본값은 7일 대 1일이라 여유가 넉넉하다.
+
+    **훑는 기준이 본문이 아니라 표식인 것이 핵심이다.** 본문을 훑으면 본문이 먼저 지워진
+    좌표를 다시는 집지 못해, 도중에 실패한 삭제가 곁다리를 영구 고아로 남긴다 — 없애려던
+    누적이 파일 종류만 바꿔 되살아난다. 표식을 기준으로 두면 **표식을 맨 마지막에** 지울
+    수 있어, 어디서 실패하든 다음 순회가 같은 좌표를 다시 집어 마저 치운다. 덤으로
+    「표식이 없는 질문에는 손대지 않는다」가 순회 자체에서 자명해진다.
+    """
+    swept = 0
+    for marker in _glob(name, ANSWERED_GLOB):
+        try:
+            if marker.stat().st_mtime > cutoff:
+                continue
+        except OSError:
+            continue
+        question = marker.parent / marker.name[:-len(ANSWERED_SUFFIX)]
+        generation, seq = parse_question_name(question.name)
+        rest = [sent_marker(question), question]
+        if generation is not None:
+            rest.insert(0, answer_path(name, generation, seq))
+        failed = False
+        for path in rest:
+            if path is None:
+                continue
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue        # 이미 없다 — 실패가 아니다. 앞선 순회의 남은 일을 마저 하는 중이다
+            except OSError:
+                failed = True
+        if failed:
+            continue            # 표식을 남긴다 — 다음 순회가 같은 좌표를 다시 집는다
+        try:
+            marker.unlink()
+        except OSError:
+            continue
+        swept += 1
+    return swept
+
+
 def cleanup(now=None, max_age_days=7.0, live_sessions=(), absent_since=None):
-    """`.sent` 표식이 붙고 오래된 알림과, tmux가 오래 부재한 우편함을 치운다 (D2).
+    """`.sent` 표식이 붙고 오래된 알림, **끝난 질문 교환**, tmux가 오래 부재한 우편함을
+    치운다 (D2, 002-N14).
 
     시점은 **기동 시 1회 + 24시간 이상 연속 생존 시 하루 1회**다 — 유휴 종료(D8) 아래에서
     "하루 1회"만 적으면 7일을 사는 우체부가 없어 청소가 영영 안 돈다. 호출 시점 판단은
@@ -136,10 +196,12 @@ def cleanup(now=None, max_age_days=7.0, live_sessions=(), absent_since=None):
     `pending-*.json`과 창구 우편함(`sessions/counter/`)은 **건드리지 않는다.**
     `absent_since`는 `{세션명: 최초 부재 관측 시각}`이며, 없으면 부재 판정을 하지 않는다
     (모르는 것을 오래됐다고 치지 않는다).
+
+    질문 쪽 판정은 `_sweep_finished`에 있다 — **응답 표식이 붙은 것만, 표식 시각부터** 센다.
     """
     now = time.time() if now is None else float(now)
     cutoff = now - float(max_age_days) * DAY
-    removed = {"notify": 0, "mailboxes": 0}
+    removed = {"notify": 0, "answered": 0, "mailboxes": 0}
     live = set(live_sessions or ())
     absent_since = absent_since or {}
 
@@ -161,6 +223,8 @@ def cleanup(now=None, max_age_days=7.0, live_sessions=(), absent_since=None):
             except OSError:
                 continue
             removed["notify"] += 1
+
+        removed["answered"] += _sweep_finished(name, cutoff)
 
         if name in live:
             continue
@@ -211,6 +275,8 @@ def read_question(session, generation, seq):
     """질문 원문·선택지를 되찾는다 — 주입 직전 **열림 확인의 재료**다 (D1).
 
     발신 뒤에도 원본을 지우지 않으므로(표식만 남긴다) 하룻밤 뒤 온 답도 이 재료를 얻는다.
+    원본이 사라지는 시점은 **응답 표식이 붙고 보존 기한이 지난 뒤** 하나뿐이고(`cleanup`),
+    그 기한은 답을 받아들이는 창보다 훨씬 길다 — 재료가 먼저 없어지지 않는다.
     """
     path = find_question(session, generation, seq)
     if path is None:

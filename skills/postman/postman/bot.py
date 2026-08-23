@@ -23,7 +23,7 @@
 남기고 ④ 잠금을 풀고 exit 0이다. **두 번째 신호는 즉시 종료**다 — 정상 종료가 막혀도
 사람이 SIGKILL까지 가지 않게 한다.
 
-    python3 postman/bot.py            # 창구가 /dev-loop 시작 시 띄운다
+    python3 postman/bot.py            # 창구가 /dev-loop 시작 시 띄운다 (기동 시 자가 점검 1회)
     python3 postman/bot.py --check    # 설정·경로 자가 점검만 하고 종료 (네트워크 안 씀)
 
 시스템 파이썬(3.9)에서도 임포트되어야 하므로 3.9 문법만 쓴다.
@@ -710,8 +710,34 @@ def _mode_problems(targets):
     return problems
 
 
-def selfcheck():
-    """`--check` — 설정·경로·토큰·우편함 권한을 훑고 결과를 stdout에 적는다. 네트워크를 쓰지 않는다."""
+def _body_targets(dir_targets):
+    """우편함 디렉토리 목록 → 그 안 질문·알림 **본문**의 점검 대상 (0600, 002-N25).
+
+    본문은 표식보다 민감하다 — 질문에는 사람에게 물으려던 문장이, 알림에는 세션이 내보낸
+    보고가 그대로 들어 있다. 표식만 보던 폭에서는 본문이 644로 서도 조용했다.
+
+    우편함 경로를 여기서 다시 조립하지 않는다 — 주소 규약(창구 우편함 예외 포함)의 단일
+    출처는 `mailbox`이므로, 그쪽이 낸 디렉토리 대상을 그대로 받아 훑는다.
+    """
+    targets = []
+    for _label, directory, _want in dir_targets:
+        if not directory.is_dir():
+            continue                       # 표식 대상(파일)은 건너뛴다
+        found = []
+        for pattern in (mailbox.NOTIFY_GLOB, mailbox.QUESTION_GLOB):
+            try:
+                found.extend(directory.glob(pattern))
+            except OSError:
+                continue
+        for path in sorted(found):
+            if path.is_symlink():
+                continue           # 심링크는 우편함 밖을 가리킬 수 있다 (002-N26과 같은 이유)
+            targets.append(("본문 %s/%s" % (directory.name, path.name), path, 0o600))
+    return targets
+
+
+def _selfcheck_problems():
+    """(설정, 주의 목록). 화면·통보가 같은 목록을 보게 하는 자리다 — 폭이 갈라지지 않는다."""
     config = paths.Config.load()
     problems = []
     if config.fail_closed:
@@ -722,9 +748,23 @@ def selfcheck():
         problems.append(str(exc))
     if not config.never_send:
         problems.append("never_send가 비었습니다 — 평문 개인정보 파일이 발신문에 실릴 수 있습니다")
+    # `sessions/` 상위도 본다 (002-N28). 여기가 0755로 서면 안은 각 우편함 0700으로 막혀도
+    # **우편함 이름 목록이 남에게 보인다** — 이름은 곧 프로젝트·노드명이다.
     problems.extend(_mode_problems([("config.json", paths.config_path(), 0o600),
-                                    ("토큰 파일", paths.token_path(), 0o600)]))
-    problems.extend(_capped(_mode_problems(mailbox.permission_targets())))
+                                    ("토큰 파일", paths.token_path(), 0o600),
+                                    ("sessions/", paths.sessions_dir(), 0o700)]))
+    # 상한은 **종류별로 따로** 센다. 한 풀을 나눠 쓰면 표식이 쌓인 우편함에서 본문 주의가
+    # 통째로 접힌 건수 문구 뒤로 밀린다 — 더 민감한 쪽이 덜 민감한 쪽에 묻히는 순서다.
+    dir_targets = mailbox.permission_targets()
+    problems.extend(_capped(_mode_problems(dir_targets)))
+    problems.extend(_capped(_mode_problems(_body_targets(dir_targets))))
+    return config, problems
+
+
+def selfcheck():
+    """`--check` — 설정·토큰과 권한 넷(상위 `sessions/`·우편함·응답 표식·질문/알림 본문)을 훑어
+    결과를 stdout에 적는다. 네트워크를 쓰지 않고, 어긋난 권한을 고쳐 쓰지도 않는다."""
+    config, problems = _selfcheck_problems()
     print("설정: %s" % config.source)
     print("뿌리: %s" % paths.root())
     print("토큰 파일: %s" % paths.token_path())
@@ -732,6 +772,66 @@ def selfcheck():
         print("주의: %s" % problem)
     print("점검 완료 (%d건 주의)" % len(problems))
     return 0
+
+
+# 기동 통보의 발신 종류. `alert`는 연성 상한 면제라 **권한 경고가 상한에 막히지 않는다**.
+STARTUP_NOTICE_KIND = "alert"
+
+# 기동 통보 파일 이름의 꼬리. 대기 중인 통보를 알아보는 표식이라 **이름이 곧 계약이다**.
+STARTUP_NOTICE_SUFFIX = "-selfcheck.json"
+
+
+def _notice_waiting():
+    """아직 나가지 않은 자가 점검 통보가 있으면 True.
+
+    창구 우편함은 청소 대상이 아니다(`mailbox.cleanup`). 고치지 않은 채 재기동을 되풀이하면
+    같은 내용이 파일로 쌓이고 텔레그램으로도 되풀이된다. 이미 나간 통보는 막지 않는다 —
+    사람이 고칠 때까지 다시 알리는 편이 맞다.
+    """
+    for path in mailbox.unsent(paths.COUNTER_MAILBOX):
+        if path.name.endswith(STARTUP_NOTICE_SUFFIX):
+            return True
+    return False
+
+
+def _fold_home(text):
+    """홈 디렉토리 접두를 `~`로 접는다.
+
+    통보는 텔레그램(제3자 서버)으로 나가고 그 채팅에 남는다. 절대경로는 **OS 사용자명**을
+    함께 싣는데, 받는 사람이 알아야 할 것은 어느 자리가 열렸는가지 자기 계정 이름이 아니다.
+    화면(`--check`) 출력은 기기 밖으로 나가지 않으므로 절대경로 그대로 둔다.
+    """
+    home = str(Path.home())
+    return text.replace(home, "~") if home else text
+
+
+def emit_startup_selfcheck(problems=None):
+    """기동 시 1회 자가 점검. 주의가 있으면 창구 우편함에 알림 파일로 남긴다 (002-N25).
+
+    `--check`는 사람이 우연히 돌릴 때만 보인다. 여기서 남긴 파일은 배달 계층이 다른 알림과
+    똑같이 텔레그램으로 내보내므로, **아무도 점검을 돌리지 않아도** 권한이 풀린 사실이
+    사람에게 닿는다. 창구 우편함은 청소 대상이 아니라 창구가 뒤늦게 훑어도 남아 있다.
+
+    주의가 0건이거나 **앞선 통보가 아직 안 나갔으면** 아무것도 쓰지 않는다 — 기동마다
+    "이상 없음"을 보내면 진짜 경고가 묻히고, 고치지 않은 채 재기동을 되풀이하면 같은 통보가
+    쌓인다. 쓰기에 실패해도 기동을 막지 않는다: 통로를 여는 것이 통보보다 앞선다.
+    """
+    # 점검(계산)과 통보(쓰기)를 **한 방어 안에** 둔다. 계산만 밖에 두면 훑던 중의 예외가
+    # 기동을 죽여, 통보를 붙인 탓에 통로가 안 열리는 뒤집힌 결과가 된다.
+    try:
+        if problems is None:
+            problems = _selfcheck_problems()[1]
+        if not problems or _notice_waiting():
+            return None
+        text = _fold_home("우체부 자가 점검 주의 %d건\n%s" % (
+            len(problems), "\n".join("- %s" % problem for problem in problems)))
+        path = paths.counter_dir() / ("notify-" + paths.mailbox_filename("selfcheck"))
+        paths.atomic_write_json(path, {"text": text, "kind": STARTUP_NOTICE_KIND})
+    except Exception:      # 통보는 부수적이다 — 실패해도 기동은 계속한다
+        log.warning("자가 점검 통보를 남기지 못했습니다")
+        return None
+    log.warning("자가 점검 주의 %d건 — 창구 우편함에 통보했습니다", len(problems))
+    return path
 
 
 def main(argv=None):
@@ -748,6 +848,8 @@ def main(argv=None):
     check_project(os.environ.get(paths.PROJECT_ENV))
     transport = HttpTransport(paths.read_token())
     acquire_lock()
+    # 잠금을 쥔 뒤에 점검한다 — 중복 기동이 거절되는 자리보다 뒤라 통보가 겹치지 않는다.
+    emit_startup_selfcheck()
     try:
         # 잠금을 쥔 뒤부터는 어떤 예외가 나도 잠금을 놓고 나간다 — 남기면 다음 기동이
         # stale 회수에 기대야 하고, 그 사이 사람이 "이미 실행 중"이라는 오해를 산다.

@@ -197,14 +197,20 @@ def diag_dir():
 
 
 def list_session_mailboxes():
-    """우편함 디렉토리 이름 목록(사전순). 창구 우편함도 포함한다."""
+    """우편함 디렉토리 이름 목록(사전순). 창구 우편함도 포함한다.
+
+    **심링크는 우편함으로 세지 않는다** (002-N26). `is_dir()`는 심링크를 따라가므로,
+    세션명 규칙에 맞는 심링크가 `sessions/` 안에 놓이면 그 대상 디렉토리가 여기서
+    나온 이름을 타고 점검·청소 대상이 된다. 청소는 파일을 지우는 자리라
+    (`mailbox.cleanup`), 정보 노출로 끝나지 않고 뿌리 밖으로 손이 나간다.
+    """
     try:
         entries = list(sessions_dir().iterdir())
     except OSError:
         return []
     names = []
     for entry in entries:
-        if not entry.is_dir():
+        if entry.is_symlink() or not entry.is_dir():
             continue
         if entry.name == COUNTER_MAILBOX or addressing.is_session_name(entry.name):
             names.append(entry.name)
@@ -251,9 +257,15 @@ def quarantine(path, prefix=None):
 # ---------------------------------------------------------------- 원자적 입출력
 
 def atomic_write_json(path, obj, mode=0o600, indent=None):
-    """같은 디렉토리에 임시 파일로 쓴 뒤 rename. 읽는 쪽은 점으로 시작하는 이름을 무시한다."""
+    """같은 디렉토리에 임시 파일로 쓴 뒤 rename. 읽는 쪽은 점으로 시작하는 이름을 무시한다.
+
+    없는 부모는 **0700으로** 만든다 (002-N27). 호출자가 앞서 `ensure_private_dir`를
+    부르는 것이 관례지만, 그 관례를 빠뜨린 새 호출자가 우편함을 0755로 세우면 자가
+    점검이 자기 프로그램의 실수를 잡는 모양이 된다. 이미 있는 디렉토리의 권한은
+    손대지 않는다 — 남의 디렉토리를 매번 잠그는 것은 별개의 사고다.
+    """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(path.parent)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".tmp")
     try:
         os.fchmod(fd, mode)

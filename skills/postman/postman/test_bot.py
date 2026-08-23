@@ -17,6 +17,7 @@ from postman import limits as limits_mod
 from postman import mailbox
 from postman import masking
 from postman import paths
+from postman import relay as relay_mod
 from postman import sender as sender_mod
 from postman import store
 from postman.transport import TelegramError
@@ -686,6 +687,29 @@ def test_a_stuck_replacing_state_does_not_keep_the_postman_alive_forever(root):
     assert postman.tick(now=now + 600) is not None
 
 
+def test_a_retired_state_word_is_read_without_breaking(root):
+    """옛 회차가 남긴 `draining`을 읽어도 지휘 정보를 잃지 않는다 (FU18/62).
+
+    어휘에서 뺀 값이라고 읽기를 실패시키면 창구가 지휘 주소·세대까지 통째로 잃는다 —
+    모르는 값은 `running`도 과도도 아닌 것으로만 치고 나머지는 그대로 살린다.
+    """
+    write_relay(state="draining", tmux="dev-cmd-vault", generation=3)
+    relay = relay_mod.read()
+    assert relay.exists and relay.tmux == "dev-cmd-vault" and relay.generation == 3
+    assert relay.state == "draining"
+    assert relay.running is False
+    assert relay.transient(now=time.time()) is False
+
+
+def test_a_retired_state_word_does_not_hold_the_idle_exit(root):
+    """`draining`은 더 이상 과도 상태가 아니다 — 지휘가 실제로 없으면 물러난다."""
+    write_relay(state="draining", tmux="dev-cmd-vault")
+    postman = make_postman(FakeTransport(), config=make_config(idle_grace=60))
+    now = time.time()
+    postman.tick(now=now)
+    assert postman.tick(now=now + 600) is not None
+
+
 def test_undelivered_mail_holds_the_idle_exit_until_the_hard_grace(root):
     write_relay(state="running", tmux="dev-cmd-vault")
     box = paths.sessions_dir() / "dev-cmd-vault"
@@ -726,15 +750,15 @@ def test_selfcheck_runs_without_network(root, capsys):
     assert "점검 완료" in capsys.readouterr().out
 
 
-def write_mailbox_for_check(name, dir_mode, marker_mode):
-    """자가 점검 대상 우편함 하나. 질문과 그 응답 표식을 지정한 권한으로 세운다."""
+def write_mailbox_for_check(name, dir_mode, marker_mode, body_mode=0o600):
+    """자가 점검 대상 우편함 하나. 질문 본문과 그 응답 표식을 지정한 권한으로 세운다."""
     paths.atomic_write_json(paths.config_path(), {"allowed_user_ids": [42], "chat_id": 42})
     paths.token_path().write_text("12345:x", encoding="utf-8")
     os.chmod(str(paths.token_path()), 0o600)
-    box = paths.session_dir(name)
-    box.mkdir(parents=True)
+    box = paths.ensure_private_dir(paths.session_dir(name))   # `sessions/` 상위까지 0700
     question = box / "question-g1-01.json"
     question.write_text("{}", encoding="utf-8")
+    os.chmod(str(question), body_mode)
     marker = box / (question.name + mailbox.ANSWERED_SUFFIX)
     marker.write_text('{"ts": 1.0}', encoding="utf-8")
     os.chmod(str(marker), marker_mode)
@@ -753,6 +777,48 @@ def test_selfcheck_flags_a_loose_mailbox_and_marker(root, capsys):
     assert stat.S_IMODE(os.stat(str(marker)).st_mode) == 0o644   # 검출만 한다 — 고쳐 쓰지 않는다
 
 
+def test_selfcheck_flags_loose_question_and_notify_bodies(root, capsys):
+    """본문은 표식보다 민감하다 — 질문 문장과 세션 보고가 그대로 들어 있다 (002-N25)."""
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600, body_mode=0o644)
+    box = paths.session_dir("dev-vault-n1")
+    notice = box / "notify-1-aaaaaa.json"
+    notice.write_text('{"text": "노드 완료"}', encoding="utf-8")
+    os.chmod(str(notice), 0o604)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert "본문 dev-vault-n1/question-g1-01.json 권한이 644" in out
+    assert "본문 dev-vault-n1/notify-1-aaaaaa.json 권한이 604" in out
+    assert stat.S_IMODE(os.stat(str(notice)).st_mode) == 0o604   # 검출만 한다 — 고쳐 쓰지 않는다
+
+
+def test_selfcheck_does_not_count_markers_as_bodies(root, capsys):
+    """`.sent`·`.answered`는 본문 글롭에 걸리지 않는다 — 한 파일이 두 번 찍히면 상한이 헛돈다."""
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+    box = paths.session_dir("dev-vault-n1")
+    notice = box / "notify-1-aaaaaa.json"
+    notice.write_text('{"text": "x"}', encoding="utf-8")
+    os.chmod(str(notice), 0o600)
+    sent = box / (notice.name + mailbox.SENT_SUFFIX)
+    sent.write_text('{"ts": 1.0}', encoding="utf-8")
+    os.chmod(str(sent), 0o644)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert "본문" not in out            # 표식 두 종은 본문으로 세지 않는다
+    assert "권한이" not in out          # 644로 선 `.sent` 표식도 점검 대상이 아니다
+
+
+def test_selfcheck_flags_a_loose_sessions_root(root, capsys):
+    """상위 `sessions/`가 열리면 안이 700이어도 **우편함 이름 목록**이 보인다 (002-N28)."""
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+    os.chmod(str(paths.sessions_dir()), 0o755)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert "sessions/ 권한이 755입니다 — 700이어야 합니다" in out
+
+
 def test_selfcheck_folds_a_flood_of_mailbox_problems(root, capsys):
     """표식은 청소 대상이 아니라 쌓인다 — 낱개로 다 찍으면 설정·토큰 주의가 묻힌다."""
     box = paths.session_dir("dev-vault-n1")
@@ -760,6 +826,7 @@ def test_selfcheck_folds_a_flood_of_mailbox_problems(root, capsys):
     for seq in range(2, 2 + bot_mod.MAILBOX_PROBLEM_LIMIT + 3):
         question = box / ("question-g1-%02d.json" % seq)
         question.write_text("{}", encoding="utf-8")
+        os.chmod(str(question), 0o600)
         marker = box / (question.name + mailbox.ANSWERED_SUFFIX)
         marker.write_text('{"ts": 1.0}', encoding="utf-8")
         os.chmod(str(marker), 0o644)
@@ -770,6 +837,41 @@ def test_selfcheck_folds_a_flood_of_mailbox_problems(root, capsys):
     assert "우편함 권한 주의 3건이 더 있습니다" in out
 
 
+def test_a_flood_of_markers_does_not_bury_a_body_problem(root, capsys):
+    """상한은 종류별로 센다 — 표식이 쌓였다고 **더 민감한 본문**이 접혀 사라지면 안 된다."""
+    box = paths.session_dir("dev-vault-n1")
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+    for seq in range(2, 2 + bot_mod.MAILBOX_PROBLEM_LIMIT + 3):
+        question = box / ("question-g1-%02d.json" % seq)
+        question.write_text("{}", encoding="utf-8")
+        os.chmod(str(question), 0o600)
+        marker = box / (question.name + mailbox.ANSWERED_SUFFIX)
+        marker.write_text('{"ts": 1.0}', encoding="utf-8")
+        os.chmod(str(marker), 0o644)
+    notice = box / "notify-1-aaaaaa.json"
+    notice.write_text('{"text": "x"}', encoding="utf-8")
+    os.chmod(str(notice), 0o644)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("응답 표식 ") == bot_mod.MAILBOX_PROBLEM_LIMIT      # 표식은 접히고
+    assert "본문 dev-vault-n1/notify-1-aaaaaa.json 권한이 644" in out     # 본문은 남는다
+
+
+def test_the_target_list_hands_over_mailbox_directories(root):
+    """`mailbox.permission_targets()`가 우편함을 **디렉토리 대상으로** 낸다는 계약.
+
+    본문 대상(`_body_targets`)이 그 모양을 받아 훑으므로, 이 계약이 깨지면 본문 점검이
+    조용히 빈손이 된다. 그 순간을 여기서 잡는다.
+    """
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+
+    directories = [path for _label, path, want in mailbox.permission_targets()
+                   if path.is_dir() and want == 0o700]
+
+    assert [p.name for p in directories] == ["dev-vault-n1"]
+
+
 def test_selfcheck_passes_a_locked_mailbox(root, capsys):
     """0700·0600으로 서 있으면 주의가 붙지 않는다 — 더 잠근 권한도 통과다."""
     write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
@@ -778,3 +880,132 @@ def test_selfcheck_passes_a_locked_mailbox(root, capsys):
     out = capsys.readouterr().out
     assert "우편함" not in out
     assert "응답 표식" not in out
+    assert "본문" not in out
+    assert "sessions/" not in out
+
+
+# ------------------------------------------------- 기동 시 자가 점검 통보 (002-N25)
+
+def read_counter_notices():
+    """창구 우편함에 남은 알림 파일 [(경로, 본문)]."""
+    found = sorted(paths.counter_dir().glob(mailbox.NOTIFY_GLOB))
+    return [(path, paths.read_json(path)) for path in found]
+
+
+def test_startup_selfcheck_leaves_a_counter_notice(root):
+    """사람이 `--check`를 돌리지 않아도 권한이 풀린 사실이 통로를 타고 닿는다."""
+    write_mailbox_for_check("dev-vault-n1", 0o755, 0o600)
+
+    path = bot_mod.emit_startup_selfcheck()
+
+    assert path is not None
+    notices = read_counter_notices()
+    assert len(notices) == 1
+    assert notices[0][1]["kind"] == "alert"          # 연성 상한 면제 — 경고가 막히지 않는다
+    assert "우편함 dev-vault-n1/ 권한이 755" in notices[0][1]["text"]
+    assert stat.S_IMODE(os.stat(str(path)).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(str(paths.counter_dir())).st_mode) == 0o700
+
+
+def test_startup_selfcheck_stays_quiet_when_clean(root):
+    """주의가 없으면 아무것도 쓰지 않는다 — 기동마다 "이상 없음"을 보내면 경고가 묻힌다."""
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+    paths.atomic_write_json(paths.config_path(),
+                            {"allowed_user_ids": [42], "chat_id": 42,
+                             "never_send": ["~/개인정보.md"]})
+
+    assert bot_mod.emit_startup_selfcheck() is None
+    assert read_counter_notices() == []
+
+
+def test_startup_selfcheck_holds_while_the_last_notice_waits(root):
+    """창구 우편함은 청소 대상이 아니다 — 못 고친 채 재기동을 되풀이하면 통보가 쌓인다."""
+    write_mailbox_for_check("dev-vault-n1", 0o755, 0o600)
+
+    first = bot_mod.emit_startup_selfcheck()
+
+    assert first is not None
+    assert bot_mod.emit_startup_selfcheck() is None      # 대기 중인 통보가 있으면 쓰지 않는다
+    assert len(read_counter_notices()) == 1
+
+
+def test_startup_selfcheck_speaks_again_after_the_notice_went_out(root):
+    """이미 나간 통보는 막지 않는다 — 고칠 때까지 다시 알리는 편이 맞다."""
+    write_mailbox_for_check("dev-vault-n1", 0o755, 0o600)
+    mailbox.mark_sent(bot_mod.emit_startup_selfcheck())
+
+    assert bot_mod.emit_startup_selfcheck() is not None
+    assert len(read_counter_notices()) == 2
+
+
+def test_startup_selfcheck_folds_the_home_prefix(root, monkeypatch):
+    """통보는 제3자 서버에 남는다 — 받는 사람이 알 것은 열린 자리지 OS 사용자명이 아니다."""
+    monkeypatch.setattr(bot_mod.Path, "home", staticmethod(lambda: root.parent))
+    write_mailbox_for_check("dev-vault-n1", 0o755, 0o600)
+
+    bot_mod.emit_startup_selfcheck()
+
+    text = read_counter_notices()[0][1]["text"]
+    assert str(root.parent) not in text
+    assert "~/postman/sessions/dev-vault-n1" in text
+
+
+def test_selfcheck_skips_a_symlinked_body(root, capsys):
+    """본문 심링크는 우편함 밖을 가리킬 수 있다 — 디렉토리와 같은 이유로 세지 않는다."""
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+    outsider = root / "밖의파일.json"
+    outsider.write_text("{}", encoding="utf-8")
+    os.chmod(str(outsider), 0o644)
+    (paths.session_dir("dev-vault-n1") / "notify-1-aaaaaa.json").symlink_to(outsider)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert "본문" not in out
+    assert "밖의파일" not in out
+
+
+def test_startup_selfcheck_does_not_stop_the_launch(root, monkeypatch):
+    """통보 쓰기가 실패해도 기동은 계속한다 — 통로를 여는 것이 통보보다 앞선다."""
+    write_mailbox_for_check("dev-vault-n1", 0o755, 0o600)
+
+    def explode(*args, **kwargs):
+        raise OSError("디스크 없음")
+
+    monkeypatch.setattr(paths, "atomic_write_json", explode)
+    assert bot_mod.emit_startup_selfcheck() is None
+
+
+def test_a_failing_check_does_not_stop_the_launch_either(root, monkeypatch):
+    """점검(계산)이 터져도 마찬가지다 — 통보를 붙인 탓에 통로가 안 열리면 뒤집힌 결과다."""
+    def explode(*args, **kwargs):
+        raise RuntimeError("점검 중 사고")
+
+    monkeypatch.setattr(bot_mod, "_selfcheck_problems", explode)
+    assert bot_mod.emit_startup_selfcheck() is None
+
+
+def test_launch_runs_the_selfcheck_once(root, monkeypatch, restore_signals):
+    """자동 실행 경로의 요지 — 기동이 점검을 부른다. 사람이 우연히 돌릴 때만이 아니다."""
+    write_mailbox_for_check("dev-vault-n1", 0o755, 0o600)
+    calls = []
+    monkeypatch.setattr(bot_mod, "emit_startup_selfcheck",
+                        lambda *a, **k: calls.append(True))
+
+    class FakePostman(object):
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def install_signal_handlers(self):
+            pass
+
+        def register_menu(self):
+            pass
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr(bot_mod, "Postman", FakePostman)
+    bot_mod.main([])
+
+    assert calls == [True]
+    assert paths.lock_file().exists() is False       # 잠금은 놓고 나간다

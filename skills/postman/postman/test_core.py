@@ -458,6 +458,137 @@ def test_cleanup_removes_old_sent_notifications(root):
     assert not note.exists()
 
 
+# ------------------------------------------- 끝난 질문 교환의 청소 (002-N14)
+
+def _finished_exchange(box, generation=1, seq=1, answered_age=None):
+    """질문 한 벌을 세운다 — 본문·`.sent`·(선택) 응답 표식·`answer-…`."""
+    question = _write(box / ("question-g%d-%02d.json" % (generation, seq)), '{"text": "q"}')
+    mailbox.mark_sent(question)
+    answer = _write(box / ("answer-g%d-%02d.json" % (generation, seq)))
+    marker = None
+    if answered_age is not None:
+        marker = _write(box / (question.name + mailbox.ANSWERED_SUFFIX), '{"ts": 1.0}')
+        stamp = time.time() - answered_age
+        os.utime(str(marker), (stamp, stamp))
+    return question, marker, answer
+
+
+def test_cleanup_removes_a_question_exchange_the_session_finished(root):
+    """응답 표식이 붙고 기한이 지난 교환은 **네 파일이 함께** 사라진다 — 무한 누적을 끊는다."""
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    question, marker, answer = _finished_exchange(box, answered_age=30 * 86400)
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 1
+    assert not question.exists()
+    assert not marker.exists()
+    assert not answer.exists()
+    assert not mailbox.sent_marker(question).exists()
+
+
+def test_cleanup_never_removes_a_question_without_an_answered_marker(root):
+    """표식이 없으면 **아무리 오래돼도 남는다** — 미답 질문이 조용히 사라지면 안 된다."""
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    question, _marker, _answer = _finished_exchange(box, answered_age=None)
+    old = time.time() - 365 * 86400
+    os.utime(str(question), (old, old))
+    os.utime(str(mailbox.sent_marker(question)), (old, old))
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 0
+    assert question.exists()
+
+
+def test_cleanup_counts_the_age_from_the_marker_not_the_question(root):
+    """기한은 **끝난 시각부터** 센다. 하룻밤 넘겨 온 답을 방금 처리한 교환은 남는다."""
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    question, marker, _answer = _finished_exchange(box, answered_age=60)
+    old = time.time() - 365 * 86400
+    os.utime(str(question), (old, old))          # 발급은 아주 오래전, 답 처리는 방금
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 0
+    assert question.exists() and marker.exists()
+
+
+def test_cleanup_leaves_a_finished_exchange_inside_the_window(root):
+    """기한 안이면 표식이 붙었어도 남는다 — 답을 되짚을 재료가 곧바로 사라지지 않는다."""
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    question, marker, answer = _finished_exchange(box, answered_age=3 * 86400)
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 0
+    assert question.exists() and marker.exists() and answer.exists()
+
+
+def test_cleanup_sweeps_only_the_finished_coordinate(root):
+    """한 우편함에 섞여 있어도 **좌표별로** 갈린다 — 곁의 미답 질문을 끌고 가지 않는다."""
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    done, _m1, _a1 = _finished_exchange(box, seq=1, answered_age=30 * 86400)
+    open_one, _m2, open_answer = _finished_exchange(box, seq=2, answered_age=None)
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 1
+    assert not done.exists()
+    assert open_one.exists() and open_answer.exists()
+
+
+def test_cleanup_sweeps_a_question_whose_name_breaks_the_coordinate_rule(root):
+    """좌표를 못 읽는 이름이어도 본문·표식은 치운다 — `answer-…` 조립만 건너뛴다.
+
+    이름을 지어내지 않는 자리다. 규약 밖 이름에 좌표를 붙여 지우면 **남의 좌표 파일을
+    지운다.**
+    """
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    question = _write(box / "question-bad.json", '{"text": "q"}')
+    mailbox.mark_sent(question)
+    marker = _write(box / (question.name + mailbox.ANSWERED_SUFFIX), '{"ts": 1.0}')
+    old = time.time() - 30 * 86400
+    os.utime(str(marker), (old, old))
+    neighbour = _write(box / "answer-g1-01.json")     # 좌표가 겹칠 뻔한 남의 파일
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 1
+    assert not question.exists() and not marker.exists()
+    assert neighbour.exists()
+
+
+def test_cleanup_retries_a_sweep_that_could_not_finish(root):
+    """도중에 못 지운 곁다리는 **다음 순회가 마저 치운다** — 표식을 맨 마지막에 지우므로.
+
+    본문을 기준으로 훑으면 본문이 먼저 사라진 좌표를 다시 집지 못해 곁다리가 영구
+    고아가 된다. 없애려던 누적이 파일 종류만 바꿔 되살아나는 자리다.
+    """
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    question, marker, answer = _finished_exchange(box, answered_age=30 * 86400)
+    question.unlink()                    # 앞선 순회가 본문까지만 지우고 끊긴 상태
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=("dev-cmd-vault",))
+
+    assert removed["answered"] == 1
+    assert not marker.exists()
+    assert not answer.exists()
+    assert not mailbox.sent_marker(question).exists()
+
+
+def test_cleanup_does_not_touch_the_answered_markers_of_the_counter_mailbox(root):
+    """창구 우편함은 통째로 청소 대상이 아니다 — 새 규칙도 그 예외를 넘지 않는다."""
+    box = paths.counter_dir()
+    question, marker, _answer = _finished_exchange(box, answered_age=30 * 86400)
+
+    removed = mailbox.cleanup(max_age_days=7, live_sessions=(),
+                              absent_since={paths.COUNTER_MAILBOX: time.time() - 30 * 86400})
+
+    assert removed["answered"] == 0
+    assert question.exists() and marker.exists()
+
+
 def test_has_undelivered_sees_pending(root):
     _write(paths.sessions_dir() / "dev-cmd-vault" / "pending-1.json")
     assert mailbox.has_undelivered() is True
@@ -534,3 +665,44 @@ def test_the_log_records_meta_and_drops_the_body(root):
     assert line["event"] == "inject" and line["session"] == "dev-cmd-vault"
     assert line["answer_len"] == len("비밀 본문")
     assert "answer" not in line
+
+
+# ------------------------------------- 우편함 열거·부모 생성 (002 FU16 N26·N27)
+
+def test_a_symlink_is_never_counted_as_a_mailbox(root):
+    """세션명 규칙에 맞는 심링크가 놓여도 우편함이 아니다 (N26).
+
+    여기서 나온 이름은 점검뿐 아니라 청소(`mailbox.cleanup`)의 입력이라, 추종하면
+    뿌리 밖 디렉토리의 파일이 지워진다. 진짜 디렉토리는 그대로 나와야 한다.
+    """
+    outside = root.parent / "somewhere-else"
+    outside.mkdir()
+    (paths.sessions_dir()).mkdir(parents=True, exist_ok=True)
+    os.symlink(str(outside), str(paths.sessions_dir() / "dev-cmd-vault"))
+    (paths.sessions_dir() / "dev-cmd-real").mkdir()
+    assert paths.list_session_mailboxes() == ["dev-cmd-real"]
+
+
+def test_a_missing_parent_is_created_owner_only(root):
+    """`ensure_private_dir`를 앞세우지 않은 호출자여도 부모는 0700이다 (N27).
+
+    umask를 넓혀도 0755로 서지 않아야, 자가 점검이 자기 프로그램의 실수를 잡는
+    모양이 되지 않는다.
+    """
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    old = os.umask(0o022)
+    try:
+        paths.atomic_write_json(box / "pending-1.json", {"x": 1})
+    finally:
+        os.umask(old)
+    assert oct(box.stat().st_mode & 0o777) == oct(0o700)
+    assert oct(paths.sessions_dir().stat().st_mode & 0o777) == oct(0o700)
+
+
+def test_an_existing_parent_keeps_its_permissions(root):
+    """이미 있는 디렉토리는 손대지 않는다 — 남의 디렉토리를 매번 잠그면 001의 사고다."""
+    box = paths.sessions_dir() / "dev-cmd-vault"
+    box.mkdir(parents=True)
+    os.chmod(str(box), 0o755)
+    paths.atomic_write_json(box / "pending-1.json", {"x": 1})
+    assert oct(box.stat().st_mode & 0o777) == oct(0o755)

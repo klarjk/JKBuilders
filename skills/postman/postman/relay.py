@@ -21,12 +21,15 @@ from postman import addressing
 from postman import paths
 
 RUNNING = "running"
-DRAINING = "draining"
 REPLACING = "replacing"
 FAILED = "failed"
 
 # 지휘 부재를 유휴로 세지 않는 상태들 (D3 ④·D8).
-TRANSIENT_STATES = (REPLACING, FAILED, DRAINING)
+TRANSIENT_STATES = (REPLACING, FAILED)
+
+# 여기 없는 값은 **거절하지 않고 그대로 담는다.** 옛 회차가 남긴 `draining`처럼 어휘에서
+# 빠진 값이 파일에 남아 있을 수 있는데, 문자열 하나 때문에 읽기를 실패시키면 지휘 주소·세대까지
+# 통째로 잃는다 — 우체부는 읽기만 하므로 모르는 값은 `running`도 과도도 아닌 것으로만 친다.
 
 
 class Relay(object):
@@ -53,7 +56,7 @@ class Relay(object):
         return self.state == RUNNING
 
     def transient(self, now=None, window=86400.0):
-        """`replacing`·`failed`·`draining`이고 갱신이 `window` 이내인가 (D3 ④).
+        """`replacing`·`failed`이고 갱신이 `window` 이내인가 (D3 ④).
 
         고착된(오래된) 과도 상태는 과도로 쳐주지 않는다 — 그래야 통로가 영영 닫히지 않는다.
         """
