@@ -7,7 +7,8 @@
 #   dev-view.sh --close         뷰어 세션을 종료한다 (도는 작업 세션이 없을 때만)
 #   dev-view.sh --name N3 [DIR] 노드 N3용 작업 세션명을 출력한다 (DIR 생략 시 현재 위치)
 #                               저장소 밖에서 부를 때는 DIR에 저장소 경로를 넘긴다
-#   dev-view.sh --peer-name DIR 이 프로젝트에서 DIR로 거는 협업 세션명을 출력한다
+#   dev-view.sh --peer-name DIR [REPO] 이 프로젝트에서 DIR로 거는 협업 세션명을 출력한다
+#                               저장소 밖에서 부를 때는 REPO에 요청자 저장소 경로를 넘긴다
 #
 # 작업 세션명에 프로젝트 슬러그가 들어가므로(dev-<프로젝트>-<노드>, peer-<대상>-<요청자>)
 # 프로젝트 간 이름이 겹치지 않는다. 그래서 대상은 항상 tmux에 살아 있는 dev-*·peer-*
@@ -56,7 +57,8 @@ repo_root() {
 # 슬러그는 폴더명만 보므로, 경로가 다른 두 저장소가 같은 폴더명을 쓰면 세션명이 겹친다
 # (그런 저장소를 동시에 돌리지 않는다는 전제다).
 slug_of() {
-  root="$1"
+  local root="$1"
+  local slug
   slug="$(basename "$root" | tr '[:upper:]' '[:lower:]' \
     | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//' | cut -c1-16 | sed 's/-$//')"
   # 폴더명이 한글뿐이면 슬러그가 통째로 비므로 경로 해시로 대신한다.
@@ -70,7 +72,8 @@ slug_of() {
 # 저장소 밖 폴백은 --peer-name 전용이다 — 협업 대상은 git 저장소가 아닐 수 있다.
 # --name은 이 폴백을 쓰지 않는다("이름 모드" 참조).
 project_slug() {
-  base="${1:-$PWD}"
+  local base="${1:-$PWD}"
+  local root
   root="$(repo_root "$base")"
   [ -n "$root" ] || root="$(cd "$base" 2>/dev/null && pwd)"
   [ -n "$root" ] || root="$base"
@@ -116,7 +119,18 @@ if [ "${1:-}" = "--peer-name" ]; then
     echo "대상 프로젝트 디렉토리가 필요합니다: dev-view.sh --peer-name /path/to/project" >&2
     exit 2
   fi
-  printf 'peer-%s-%s\n' "$(project_slug "$target")" "$(project_slug)"
+  # 요청자 쪽 슬러그는 저장소에서만 뽑는다. --name과 같은 이유로, 저장소 밖에서
+  # cwd 폴더명으로 폴백하면 지휘처럼 전용 폴더에서 도는 호출자에게 틀린 세션명을
+  # 조용히 내주므로 폴백 대신 거절한다. 대상(target) 쪽은 협업 대상이 git 저장소가
+  # 아닐 수 있어 의도적으로 project_slug의 폴백을 그대로 쓴다.
+  peer_repo="${3:-$PWD}"
+  peer_root="$(repo_root "$peer_repo")"
+  if [ -z "$peer_root" ]; then
+    echo "저장소가 아니라 세션명을 만들 수 없습니다: $peer_repo" >&2
+    echo "저장소 밖에서 부를 때는 저장소 경로를 함께 넘기십시오: dev-view.sh --peer-name /path/to/target /path/to/repo" >&2
+    exit 2
+  fi
+  printf 'peer-%s-%s\n' "$(project_slug "$target")" "$(slug_of "$peer_root")"
   exit 0
 fi
 
@@ -137,7 +151,10 @@ live_sessions() {
 # ---------------------------------------------------------------- 종료 모드
 if [ "${1:-}" = "--close" ]; then
   # 다른 프로젝트가 아직 세션을 돌리고 있으면 창은 그쪽 몫이다.
-  remaining="$(live_sessions)"
+  # 지휘 세션(dev-cmd-*)은 미러 대상에는 포함하지만(live_sessions는 건드리지 않는다),
+  # --close 판정에서는 뺀다 — 안 그러면 지휘가 스스로 --close를 불렀을 때
+  # 자기 자신 때문에 거부된다.
+  remaining="$(live_sessions | grep -Ev '^dev-cmd-')"
   if [ -n "$remaining" ]; then
     echo "도는 작업 세션이 있어 뷰어를 닫지 않습니다: $(printf '%s' "$remaining" | tr '\n' ' ')" >&2
     exit 1
