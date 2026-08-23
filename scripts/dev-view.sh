@@ -5,7 +5,8 @@
 #   dev-view.sh                 도는 dev-* 세션을 모두 비추고 창을 띄운다 (프로젝트 무관)
 #   dev-view.sh --sync          창은 띄우지 않고 pane 구성만 맞춘다
 #   dev-view.sh --close         뷰어 세션을 종료한다 (도는 작업 세션이 없을 때만)
-#   dev-view.sh --name N3       이 프로젝트의 노드 N3용 작업 세션명을 출력한다
+#   dev-view.sh --name N3 [DIR] 노드 N3용 작업 세션명을 출력한다 (DIR 생략 시 현재 위치)
+#                               저장소 밖에서 부를 때는 DIR에 저장소 경로를 넘긴다
 #   dev-view.sh --peer-name DIR 이 프로젝트에서 DIR로 거는 협업 세션명을 출력한다
 #
 # 작업 세션명에 프로젝트 슬러그가 들어가므로(dev-<프로젝트>-<노드>, peer-<대상>-<요청자>)
@@ -42,18 +43,20 @@ valid_name() {
   esac
 }
 
-# 현재 디렉토리가 속한 저장소의 이름을 세션명에 쓸 수 있는 슬러그로 만든다.
+# 주어진 경로가 속한 저장소의 루트. 저장소가 아니면 빈 값을 낸다.
 # 워크트리에서 불러도 --git-common-dir이 메인 저장소를 가리키므로 같은 값이 나온다.
+repo_root() {
+  ( cd "${1:-$PWD}" 2>/dev/null || exit 0
+    gitdir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+    [ -n "$gitdir" ] || exit 0
+    cd "$(dirname "$gitdir")" 2>/dev/null && pwd )
+}
+
+# 경로를 세션명에 쓸 수 있는 슬러그로 만든다.
 # 슬러그는 폴더명만 보므로, 경로가 다른 두 저장소가 같은 폴더명을 쓰면 세션명이 겹친다
 # (그런 저장소를 동시에 돌리지 않는다는 전제다).
-project_slug() {
-  base="${1:-$PWD}"
-  root="$(cd "$base" 2>/dev/null && {
-    gitdir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
-    [ -n "$gitdir" ] && cd "$(dirname "$gitdir")" 2>/dev/null && pwd
-  })"
-  [ -n "$root" ] || root="$(cd "$base" 2>/dev/null && pwd)"
-  [ -n "$root" ] || root="$base"
+slug_of() {
+  root="$1"
   slug="$(basename "$root" | tr '[:upper:]' '[:lower:]' \
     | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//' | cut -c1-16 | sed 's/-$//')"
   # 폴더명이 한글뿐이면 슬러그가 통째로 비므로 경로 해시로 대신한다.
@@ -61,6 +64,17 @@ project_slug() {
     slug="p$(printf '%s' "$root" | { md5 -q 2>/dev/null || md5sum 2>/dev/null; } | cut -c1-6)"
   fi
   printf '%s' "$slug"
+}
+
+# 저장소면 저장소 루트로, 아니면 그 경로 자체로 슬러그를 만든다.
+# 저장소 밖 폴백은 --peer-name 전용이다 — 협업 대상은 git 저장소가 아닐 수 있다.
+# --name은 이 폴백을 쓰지 않는다("이름 모드" 참조).
+project_slug() {
+  base="${1:-$PWD}"
+  root="$(repo_root "$base")"
+  [ -n "$root" ] || root="$(cd "$base" 2>/dev/null && pwd)"
+  [ -n "$root" ] || root="$base"
+  slug_of "$root"
 }
 
 # tmux가 pane 안에서 다시 셸로 파싱하는 문자열이라 각 인자를 이스케이프해 넘긴다.
@@ -82,7 +96,16 @@ if [ "${1:-}" = "--name" ]; then
     echo "노드 ID가 필요합니다 (영문·숫자 포함): dev-view.sh --name N3" >&2
     exit 2
   fi
-  printf 'dev-%s-%s\n' "$(project_slug)" "$node"
+  # 슬러그는 저장소에서만 뽑는다. 저장소 밖에서 cwd 폴더명으로 폴백하면 지휘처럼
+  # 전용 폴더에서 도는 호출자에게 틀린 세션명을 조용히 내주므로, 폴백 대신 거절한다.
+  name_repo="${3:-$PWD}"
+  name_root="$(repo_root "$name_repo")"
+  if [ -z "$name_root" ]; then
+    echo "저장소가 아니라 세션명을 만들 수 없습니다: $name_repo" >&2
+    echo "저장소 밖에서 부를 때는 저장소 경로를 함께 넘기십시오: dev-view.sh --name N3 /path/to/repo" >&2
+    exit 2
+  fi
+  printf 'dev-%s-%s\n' "$(slug_of "$name_root")" "$node"
   exit 0
 fi
 
