@@ -68,9 +68,6 @@ GONE = "gone"
 AMBIGUOUS = "ambiguous"
 DUPLICATE = "duplicate"
 
-# 세션이 답을 받아 처리했다고 신고하는 표식. 질문 파일 이름 뒤에 붙인다(`.sent`와 같은 자리).
-ANSWERED_SUFFIX = ".answered"
-
 # 화면에서 선택지 번호를 읽는 눈 (ADR-001 승계). 앞에 커서·글머리표가 붙어도 읽는다.
 _CHOICE_RE = r"^[^\S\n]*[>❯\-\*]?[^\S\n]*(\d+)[.)][^\S\n]*%s[^\S\n]*$"
 
@@ -131,7 +128,7 @@ def answered_marker(session, generation, seq):
     path = mailbox.find_question(session, generation, seq)
     if path is None:
         return None
-    return path.parent / (path.name + ANSWERED_SUFFIX)
+    return path.parent / (path.name + mailbox.ANSWERED_SUFFIX)
 
 
 def answered(session, generation, seq):

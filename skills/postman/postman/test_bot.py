@@ -14,6 +14,7 @@ import pytest
 from postman import bot as bot_mod
 from postman import ledger as ledger_mod
 from postman import limits as limits_mod
+from postman import mailbox
 from postman import masking
 from postman import paths
 from postman import sender as sender_mod
@@ -723,3 +724,57 @@ def test_selfcheck_runs_without_network(root, capsys):
     paths.token_path().write_text("12345:x", encoding="utf-8")
     assert bot_mod.main(["--check"]) == 0
     assert "점검 완료" in capsys.readouterr().out
+
+
+def write_mailbox_for_check(name, dir_mode, marker_mode):
+    """자가 점검 대상 우편함 하나. 질문과 그 응답 표식을 지정한 권한으로 세운다."""
+    paths.atomic_write_json(paths.config_path(), {"allowed_user_ids": [42], "chat_id": 42})
+    paths.token_path().write_text("12345:x", encoding="utf-8")
+    os.chmod(str(paths.token_path()), 0o600)
+    box = paths.session_dir(name)
+    box.mkdir(parents=True)
+    question = box / "question-g1-01.json"
+    question.write_text("{}", encoding="utf-8")
+    marker = box / (question.name + mailbox.ANSWERED_SUFFIX)
+    marker.write_text('{"ts": 1.0}', encoding="utf-8")
+    os.chmod(str(marker), marker_mode)
+    os.chmod(str(box), dir_mode)
+    return marker
+
+
+def test_selfcheck_flags_a_loose_mailbox_and_marker(root, capsys):
+    """표식·우편함은 **세션이 쓰므로** 우체부가 못 고친다 — 어긋나면 주의로 찍어 알린다."""
+    marker = write_mailbox_for_check("dev-vault-n1", 0o755, 0o644)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert "우편함 dev-vault-n1/ 권한이 755" in out
+    assert "응답 표식 dev-vault-n1/question-g1-01.json.answered 권한이 644" in out
+    assert stat.S_IMODE(os.stat(str(marker)).st_mode) == 0o644   # 검출만 한다 — 고쳐 쓰지 않는다
+
+
+def test_selfcheck_folds_a_flood_of_mailbox_problems(root, capsys):
+    """표식은 청소 대상이 아니라 쌓인다 — 낱개로 다 찍으면 설정·토큰 주의가 묻힌다."""
+    box = paths.session_dir("dev-vault-n1")
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+    for seq in range(2, 2 + bot_mod.MAILBOX_PROBLEM_LIMIT + 3):
+        question = box / ("question-g1-%02d.json" % seq)
+        question.write_text("{}", encoding="utf-8")
+        marker = box / (question.name + mailbox.ANSWERED_SUFFIX)
+        marker.write_text('{"ts": 1.0}', encoding="utf-8")
+        os.chmod(str(marker), 0o644)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("응답 표식 ") == bot_mod.MAILBOX_PROBLEM_LIMIT
+    assert "우편함 권한 주의 3건이 더 있습니다" in out
+
+
+def test_selfcheck_passes_a_locked_mailbox(root, capsys):
+    """0700·0600으로 서 있으면 주의가 붙지 않는다 — 더 잠근 권한도 통과다."""
+    write_mailbox_for_check("dev-vault-n1", 0o700, 0o600)
+
+    assert bot_mod.main(["--check"]) == 0
+    out = capsys.readouterr().out
+    assert "우편함" not in out
+    assert "응답 표식" not in out

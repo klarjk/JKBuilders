@@ -680,8 +680,38 @@ def check_project(project=None, relay=None):
 
 # ---------------------------------------------------------------------- 진입점
 
+# 우편함 권한 주의를 낱개로 찍는 상한. 표식은 청소 대상이 아니라 오래 사는 우편함에 쌓이고,
+# 전부 찍으면 **조치 가능한 항목(설정·토큰)이 잡음에 묻힌다.**
+MAILBOX_PROBLEM_LIMIT = 10
+
+
+def _capped(problems, limit=MAILBOX_PROBLEM_LIMIT):
+    """상한을 넘는 주의는 건수로 접는다. 접힌 건도 같은 종류임을 문구에 남긴다."""
+    if len(problems) <= limit:
+        return problems
+    return problems[:limit] + ["우편함 권한 주의 %d건이 더 있습니다 — 위와 같은 종류입니다"
+                               % (len(problems) - limit,)]
+
+
+def _mode_problems(targets):
+    """[(라벨, 경로, 요구 권한)] → 요구보다 열린 것만 문구로. `stat` 실패는 건너뛴다.
+
+    **어긋난 것을 고쳐 쓰지 않는다.** 우편함·응답 표식을 쓰는 주체는 세션이라, 우체부가
+    권한을 손대면 한 파일에 두 주체가 쓰게 된다 — 여기서는 검출과 통보까지다.
+    """
+    problems = []
+    for label, path, want in targets:
+        try:
+            mode = stat.S_IMODE(os.stat(str(path)).st_mode)
+        except OSError:
+            continue
+        if mode & ~want:
+            problems.append("%s 권한이 %o입니다 — %o이어야 합니다 (%s)" % (label, mode, want, path))
+    return problems
+
+
 def selfcheck():
-    """`--check` — 설정·경로·토큰을 훑고 결과를 stdout에 적는다. 네트워크를 쓰지 않는다."""
+    """`--check` — 설정·경로·토큰·우편함 권한을 훑고 결과를 stdout에 적는다. 네트워크를 쓰지 않는다."""
     config = paths.Config.load()
     problems = []
     if config.fail_closed:
@@ -692,13 +722,9 @@ def selfcheck():
         problems.append(str(exc))
     if not config.never_send:
         problems.append("never_send가 비었습니다 — 평문 개인정보 파일이 발신문에 실릴 수 있습니다")
-    for label, path in (("config.json", paths.config_path()), ("토큰 파일", paths.token_path())):
-        try:
-            mode = stat.S_IMODE(os.stat(str(path)).st_mode)
-        except OSError:
-            continue
-        if mode & 0o077:
-            problems.append("%s 권한이 %o입니다 — 600이어야 합니다 (%s)" % (label, mode, path))
+    problems.extend(_mode_problems([("config.json", paths.config_path(), 0o600),
+                                    ("토큰 파일", paths.token_path(), 0o600)]))
+    problems.extend(_capped(_mode_problems(mailbox.permission_targets())))
     print("설정: %s" % config.source)
     print("뿌리: %s" % paths.root())
     print("토큰 파일: %s" % paths.token_path())

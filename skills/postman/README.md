@@ -60,7 +60,7 @@ ADR-002의 **텔레그램 중계 프로그램**. 머신 전역 1개 프로세스
 | `postman/delivery.py` | **우편함 → 텔레그램** — 안정화 확인·손상 격리·질문 선택지의 인라인 버튼 조립 |
 | `postman/handler.py` | **라우팅** — 답장·버튼·`done`을 어느 화면에 넣을지. 세대 대조와 보관·재주입 |
 | `postman/relay.py` | `relay.json` **읽기 전용** — 쓰는 주체는 창구 하나뿐이다 |
-| `postman/mailbox.py` | 우편함 파일 규약·미발신 판정·청소 |
+| `postman/mailbox.py` | 우편함 파일 규약(표식 이름 포함)·미발신 판정·청소·권한 점검 대상 열거 |
 | `postman/tmuxq.py` | tmux 조회·캡처·리터럴 주입(+`halt`의 `kill-session`). **캡처 실패는 `None`, 빈 화면은 `""`** |
 | `postman/eventlog.py` | `log/postman-YYYYMMDD.jsonl` — **이벤트 메타만, 본문 불기록** |
 | `postman/diag.py` | **중단 진단 캡처** — 중단 시 화면 `before`/`after`를 `diag/`에 보존. 마스킹 관문을 지나고, 실패해도 예외를 올리지 않는다 |
@@ -79,8 +79,8 @@ ledger.json      1회 한정 장부 — 우체부 단독 쓰기
 counters.json    발신 상한 계수
 relay.json       현 지휘 주소·세대·상태 — **창구 단독 쓰기**
 log/             이벤트 메타
-sessions/<tmux세션명>/   notify-*.json · *.sent · question-g<세대>-NN.json
-                        question-….json.answered (세션이 남기는 응답 표식 · 청소 대상 제외)
+sessions/<tmux세션명>/ (700)   notify-*.json · *.sent · question-g<세대>-NN.json
+                        question-….json.answered (600 · 세션이 남기는 응답 표식 · 청소 대상 제외)
                         answer-g<세대>-NN.json · pending-*.json (청소 대상 제외)
 sessions/counter/       창구 전용 우편함 (고정 이름)
 corrupt/         손상 파일 격리
@@ -170,6 +170,17 @@ cd skills/postman && python3 -m pytest -q
 
 세션은 텔레그램을 모른다. 자기 우편함에 파일만 쓴다.
 
+**우편함 디렉토리는 700, 그 안에 쓰는 파일은 600으로 만든다.** 질문 본문과 답이 여기 쌓인다.
+리다이렉션·편집기로 바로 만들면 755·644로 남으므로 **자리를 먼저 잡고 채운다.**
+
+```bash
+install -d -m 700 ~/.claude/postman/sessions/<자기 tmux명>
+install -m 600 /dev/null <파일>     # 그 뒤 리다이렉션으로 채운다 — 권한은 그대로 남는다
+```
+
+`bot.py --check`가 우편함 디렉토리(700)와 응답 표식(600)의 어긋남을 **검출만 하고 고쳐 쓰지
+않는다** — 쓰는 주체가 세션이라, 우체부가 권한까지 손대면 한 파일에 두 주체가 쓰게 된다.
+
 **알림** — `sessions/<자기 tmux명>/notify-<ts_ms>-<rand6>.json`
 
 ```json
@@ -179,6 +190,11 @@ cd skills/postman && python3 -m pytest -q
 `kind`는 `notify`·`alert`·`done_report` 중 하나(생략하면 `notify`). `alert`와
 `done_report`는 연성 발신 상한 면제라 대기 해제성 통보가 막히지 않는다.
 **`buttons`를 넣어도 버려진다** — 알림은 텍스트만이다.
+
+지휘가 창구에 내는 제어 통보도 이 두 kind를 쓴다 — 교체 요청·계측 불능·우체부 재기동
+요청은 `alert`, 완주 보고는 `done_report`다. 창구는 tmux 세션이 아니라 주입 대상이 되지
+못해, **그 통보는 창구가 이 우편함을 직접 훑어 가져간다** — 청소 기한(`.sent` 뒤 7일)이 곧
+제어 통보의 보존 기한이다. 통로 정본은 `skills/dev-loop/SKILL.md`의 「사용자에게 닿는 통로」다.
 
 **질문** — `sessions/<자기 tmux명>/question-g<세대>-NN.json`
 
@@ -211,13 +227,16 @@ cd skills/postman && python3 -m pytest -q
 세션은 그 질문의 답을 화면으로 받아 처리한 **직후** 표식을 남긴다. `.sent`와 같은 자리·같은
 형태이고(원본은 건드리지 않는다) 내용은 시각 하나면 된다.
 
+**표식 파일은 600으로 만든다** — 「세션이 우체부에게 말하는 법」의 자리 잡기 명령을 그대로 쓴다.
+
 우체부는 이 표식을 **주입 전 열림 확인과 주입 후 반영 확인 양쪽의 1차 근거로 읽는다.**
 표식이 있으면 화면을 보지 않고, **없을 때만 화면 판정(재캡처 3회)으로 내려선다.** 표식을
 빠뜨려도 통로는 종전대로 서지만, 남기면 화면 에코가 늦어 생기는 `not_reflected` 오판과
 같은 질문에 답이 두 번 들어가는 일이 사라진다.
 
-> **Do:** 답을 처리한 직후 그 질문 파일 이름 뒤에 `.answered`를 붙여 남긴다
-> **Don't:** 답을 받기 전에 미리 남긴다 — 그 좌표의 답은 **영영 안 들어간다**
+> **Do:** 답을 처리한 직후 그 질문 파일 이름 뒤에 `.answered`를 붙여 **600으로** 남긴다
+> **Don't:** 답을 받기 전에 미리 남기거나, 644로 두고 우체부가 고쳐 줄 것으로 기대한다 —
+> 미리 남기면 그 좌표의 답은 **영영 안 들어간다**
 
 **표식이 확실히 듣는 자리는 다음 주입의 열림 확인이다.** 반영 확인은 넣은 직후 몇 초를 보는 자리라
 세션이 답을 처리해 표식을 남기기 전에 끝나는 경우가 흔하다 — 그때는 화면 판정이 그대로 서므로

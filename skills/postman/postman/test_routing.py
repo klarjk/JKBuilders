@@ -329,7 +329,7 @@ def test_a_reply_to_a_question_the_session_already_answered_is_refused(root):
     rig = Rig(screen)
     path = write_question(WORKER, QUESTION, choices=["진행"])
     rig.postman.tick()
-    marker = path.parent / (path.name + inject_mod.ANSWERED_SUFFIX)
+    marker = path.parent / (path.name + mailbox.ANSWERED_SUFFIX)
     paths.atomic_write_json(marker, {"ts": 1.0})
     rig.postman.handle_update(reply_update(1, "진행", rig.last_message_id()))
     assert screen.sent == []

@@ -4,6 +4,7 @@
       notify-<ts_ms>-<rand6>.json   세션이 쓰는 일방 알림 — 텍스트만, 버튼 불허
       notify-<...>.sent             우체부의 발신 완료 표식 — **원본은 건드리지 않는다**
       question-g<세대>-NN.json       세션이 쓰는 텔레그램행 질문
+      question-<...>.answered       세션이 쓰는 응답 표식 — 우체부는 **읽기만 한다**
       answer-g<세대>-NN.json         우체부가 쓰는 주입 기록 — **답 도착의 증거가 아니다**
       pending-<ts>.json             우체부가 쓰는 미주입 보관분 — **청소 대상 제외**
 
@@ -24,9 +25,14 @@ from postman import paths
 
 SENT_SUFFIX = ".sent"
 
+# 세션이 답을 처리했다고 신고하는 표식. 질문 파일 이름 뒤에 붙는다 — 읽는 쪽은 `inject`지만
+# **우편함 이름 규약의 단일 출처는 이 파일이다.**
+ANSWERED_SUFFIX = ".answered"
+
 NOTIFY_GLOB = "notify-*.json"
 QUESTION_GLOB = "question-*.json"
 PENDING_GLOB = "pending-*.json"
+ANSWERED_GLOB = QUESTION_GLOB + ANSWERED_SUFFIX
 
 DAY = 86400.0
 
@@ -86,6 +92,29 @@ def unsent(session):
 def pending(session):
     """미주입 보관분 (D7). 청소가 지우면 D7이 무너지므로 **대상에서 제외**한다."""
     return _glob(session, PENDING_GLOB)
+
+
+def answered_markers(session):
+    """세션이 남긴 응답 표식 파일(사전순). 우체부는 이 파일을 쓰지도 고치지도 않는다."""
+    return _glob(session, ANSWERED_GLOB)
+
+
+def permission_targets():
+    """[(라벨, 경로, 요구 권한)] — 자가 점검이 권한을 볼 자리 (우편함 0700 · 응답 표식 0600).
+
+    표식을 쓰는 주체는 세션이라 `mark_sent`의 `ensure_private_dir`를 타지 않는다. **어긋난
+    것을 고쳐 쓰지 않고 열거만 한다** — 한 파일에 쓰는 주체는 하나여야 하므로, 처분은
+    검출과 통보까지다.
+    """
+    targets = []
+    for name in paths.list_session_mailboxes():
+        directory = _mailbox_dir(name)
+        if directory is None:
+            continue
+        targets.append(("우편함 %s/" % name, directory, 0o700))
+        for marker in answered_markers(name):
+            targets.append(("응답 표식 %s/%s" % (name, marker.name), marker, 0o600))
+    return targets
 
 
 def has_undelivered(sessions=None):

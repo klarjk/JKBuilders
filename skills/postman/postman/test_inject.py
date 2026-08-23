@@ -7,6 +7,7 @@ import pytest
 
 from postman import inject as inject_mod
 from postman import ledger as ledger_mod
+from postman import mailbox
 from postman import paths
 from postman import tmuxq
 
@@ -456,7 +457,7 @@ def question_file(root, session="dev-cmd-vault", generation=2, seq=1):
 
 def mark_answered(question_path):
     """세션이 답을 받아 처리했다고 남기는 표식."""
-    marker = question_path.parent / (question_path.name + inject_mod.ANSWERED_SUFFIX)
+    marker = question_path.parent / (question_path.name + mailbox.ANSWERED_SUFFIX)
     marker.write_text('{"ts": 1.0}', encoding="utf-8")
     return marker
 
