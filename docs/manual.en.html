@@ -79,7 +79,7 @@
 <div class="cards">
   <div class="card" style="--c:var(--devloop)">
     <h4>/dev-loop family</h4>
-    <p>Multi-session dev orchestration. Lays the work out as a flowchart and loops to completion. Three-tier sessions + Telegram remote control.</p>
+    <p>Multi-session dev orchestration. Lays the work out as a flowchart and loops to completion. Each box is delegated to its own session.</p>
     <div class="cmd">/dev · /dev-loop · /impl · /adr</div>
   </div>
   <div class="card" style="--c:var(--prp)">
@@ -120,7 +120,7 @@
 </div>
 <ul>
   <li><b>/dev</b> — Builds a development plan (DEV_PLAN) interactively. It lays the whole job out as a <b>work flowchart</b>, then runs whichever tasks have their prerequisites met.</li>
-  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. The orchestrating role moves into its own session that gets swapped out when it fills up, and each task is handed to an isolated session.</li>
+  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. Each box of the flowchart is handed to its own isolated session; only irreversible operations and design choices stay on your screen.</li>
   <li><b>/impl</b> — Takes one feature or refactor and runs the design → plan → build → review agent chain automatically.</li>
   <li><b>/adr</b> — Records an architecture decision. Easy calls are handled directly; hard ones go to a design + critique convergence agent.</li>
 </ul>
@@ -158,58 +158,39 @@ N2 experiment┘        ↑
   <li>If e2e fails, the failing flow's files are matched against the "owned files" column to pin down which build caused it, and only that one re-runs. If the match is inconclusive, it reports to you rather than guessing.</li>
 </ul>
 
-<h3>/dev-loop — it swaps sessions out and keeps going</h3>
-<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you. But <b>the session running the loop fills up too.</b> So the orchestrating role is moved off your screen into its own session, and <b>when that session fills up it is replaced wholesale.</b></p>
+<h3>/dev-loop — each box is handed to its own session</h3>
+<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you — it <b>hands one box of the flowchart to a separate Claude session</b> and repeats that delegation until the plan is done. Each delegated session is its own process, so its context is fully isolated.</p>
 
-<h4>Three tiers</h4>
+<h4>Two kinds of session</h4>
 <table>
-  <tr><th>Tier</th><th>Where it runs</th><th>What it owns</th><th>What it doesn't</th></tr>
-  <tr><td><b>Counter</b></td><td>The screen you're talking to</td><td>Spawning, replacing, and relaying for the commander. The initial planning session when no plan exists yet</td><td>Task judgment, delegation/collection, plan updates</td></tr>
-  <tr><td><b>Commander</b></td><td>One separate terminal session (tmux)</td><td>Delegating, collecting, judging tasks; updating and committing the plan; <b>measuring its own context</b></td><td>Replacing itself, irreversible operations</td></tr>
-  <tr><td><b>Worker</b></td><td>One session per task (tmux)</td><td>Building and committing inside its own isolated workspace, then reporting</td><td>Writing the plan (read-only), edits outside its workspace</td></tr>
+  <tr><th>Session</th><th>Where it runs</th><th>What it owns</th><th>What it doesn't</th></tr>
+  <tr><td><b>Main</b></td><td>The screen you're talking to</td><td>Picking boxes, delegating, collecting, judging; updating and committing the plan; irreversible operations and design sign-off</td><td>Building the boxes it delegated</td></tr>
+  <tr><td><b>Worker</b></td><td>One session per box (tmux)</td><td>Building and committing inside its own isolated workspace, then reporting</td><td>Writing the plan (read-only), edits outside its workspace</td></tr>
 </table>
 <div class="flow">
-  <span class="step">Counter · confirm plan</span><span class="arw">→</span>
-  <span class="step">spawn commander</span><span class="arw">→</span>
-  <span class="step">delegate · collect</span><span class="arw">→</span>
-  <span class="step">counter swaps a full commander</span><span class="arw">→</span>
-  <span class="step">done</span>
+  <span class="step">main · pick next box</span><span class="arw">→</span>
+  <span class="step">spawn worker · delegate</span><span class="arw">→</span>
+  <span class="step">collect report · verify</span><span class="arw">→</span>
+  <span class="step">merge · update plan</span><span class="arw">→</span>
+  <span class="step">next box</span>
 </div>
-<p><b>The counter doesn't judge, and the commander doesn't pretend it won't die.</b> The moment the counter starts reading into the plan it fills up at the same rate, and splitting the tiers stops meaning anything. So the counter passes the commander's words to you verbatim and your answer back verbatim — no summarizing, no adjudicating.</p>
+<p><b>Only two kinds of box stay with main.</b> ① Irreversible execution (deploys, data migrations, joining parallel boxes) — worker sessions run without approval prompts, so nobody is there to hit the brake. ② Design work whose owner is you — there is no one in a worker session to pick a mockup. Everything else (research, study, design docs, implementation) is delegated.</p>
 
-<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Replacement is not resumption</b> · At the <b>soft limit</b> the commander stops sending out new work, collects only what is in flight, wraps up, and asks to be replaced. At the <b>hard limit</b> it gives up collecting too, records progress, and leaves. The counter kills that session and spawns a <b>brand-new one</b> — resuming the same session would restore the whole conversation and relieve nothing. Instead the <b>handover is banked into the plan continuously</b>, so whenever it is cut off the next commander picks up from the plan alone.</div>
-<p style="font-size:13px;color:var(--muted)">The limits are measured in <b>absolute tokens</b>, not percentages — soft at <b>200,000</b>, hard at <b>300,000</b>. Cutting well short of a one-million-token window is a <b>cost and judgment-quality</b> decision, not a capacity one. The measurement happens at two points — right before new work is sent out, and right after a Telegram answer lands — and the verdict is a <b>numeric comparison</b>, not a model judgment.</p>
-
-<h4>It runs while you're away — Telegram</h4>
-<p>Nobody sits in front of the commander. Anything printed to its screen reaches no one. So whatever needs a human is carried out over Telegram by the <b>postman</b> (<code>skills/postman/</code>).</p>
-<ul>
-  <li>Sessions know nothing about Telegram — they only <b>write files into their own mailbox.</b> The postman reads them, sends them out, and <b>injects your reply straight into that session's screen.</b></li>
-  <li>Questions with choices go out as <b>inline buttons</b>. Pressing one types that label into the session. Pressing the same button twice still executes <b>once</b>.</li>
-  <li>Everything outbound passes a single <b>masking gate</b> — secret-shaped values, secret-shaped names, and the contents of any file registered in <code>never_send</code> are stripped.</li>
-  <li><b>Irreversible actions can't be unlocked by a button either.</b> What a human reads remotely is a truncated summary, and approving a deploy or a data migration off a summary throws away the point of the gate.</li>
-</ul>
-<div class="note"><b>The postman is optional</b> · <code>/dev-loop</code> runs fine without it — questions just appear on screen only, and you have to be at the desk. See <b>Optional setup — Telegram</b> below for installation and tokens.</div>
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Workers always run in an isolated workspace</b> · A worktree is created even for a single box — sharing main's tree makes the two fight over commit locks. A box counts as done only when <b>the artifacts and commits actually exist</b> and the report's verification result passes. Reply count is never the test — several requests to one session come back merged into a single reply.</div>
 
 <h4>Running things in parallel</h4>
-<p>When several tasks are ready, the eligible ones run <b>up to three at a time</b>. Eligibility needs both conditions — ① the files each will touch don't overlap, and ② their tests don't grab the same port, the same DB file, or the same external service at once. If either is uncertain, they run sequentially.</p>
-<p style="font-size:13px;color:var(--muted)">To run two or more build tasks at once, the plan must contain a <b>join task</b> whose prerequisites are all of them. If it doesn't, the commander adds that box to the plan first and then starts.</p>
+<p>When several boxes are ready, the eligible ones run <b>up to three at a time</b>. Eligibility needs both conditions — ① the files each will touch don't overlap, and ② their tests don't grab the same port, the same DB file, or the same external service at once. If either is uncertain, they run sequentially.</p>
+<p style="font-size:13px;color:var(--muted)">To run two or more build boxes at once, the plan must contain a <b>join box</b> whose prerequisites are all of them. If it doesn't, main adds that box to the plan first and then starts. Live worker screens are mirrored into a split pane by <code>scripts/dev-view.sh</code> — it is a read-only mirror, so a viewer failure never blocks the delegation.</p>
 
-<h4>Clearing the backlog — <code>--followup</code></h4>
-<p>Development keeps pushing "things to fix later" outside the plan. <code>/dev-loop --followup</code> gathers those loose ends into a <b>follow-up ledger</b> and clears it <b>in parallel</b> through the same three tiers.</p>
-<ul>
-  <li><b>Harvesting, triage, and grouping happen at the counter</b> — every item needs your approval, and there is nowhere but the screen you're on to do that.</li>
-  <li><b>Clearing happens at the commander.</b> All the counter hands over is the ledger path and the approved scope — <b>two lines.</b></li>
-  <li>Follow-up items have almost no ordering dependencies and are already split by the files they land in, so they <b>parallelize better than plan nodes</b> — three at a time by default, four when they're light.</li>
-</ul>
-<p style="font-size:13px;color:var(--muted)">Feature additions found outside the approved scope are not built; they're recorded as "held" in the ledger and reported together when the run ends. Approval is handled by the triage step of the next <code>--followup</code> call.</p>
+<h4>Where it stops</h4>
+<p>The context budget is measured against <b>the main session</b>. Once a single call reaches <b>12 delegated boxes</b> or <b>3 handled by main directly</b>, it updates and commits the plan, then stops and tells you. Pick it up on a fresh screen with <code>/dev-loop --resume &lt;plan path&gt;</code>.</p>
 
 <h4>What happens when something jams</h4>
 <ul>
-  <li><b>Worker delegation fails</b> → retried once; if it still fails, the commander handles that one task directly. Isolation is given up, progress isn't.</li>
-  <li><b>Commander spawn fails</b> → retried once with an ordinary (heavier) configuration. If that fails too, <b>the counter doubles as the commander</b> and drives the loop itself (giving up the unbounded loop).</li>
-  <li><b>Two consecutive replacements for the same reason</b> → there is no third. It tells you and stops, so a cause that replacement can't fix — a broken measurement wire, say — doesn't spin the replacement loop.</li>
+  <li><b>Delegation fails</b> (worktree refused, session never registers, no progress after a nudge) → retried once; if it still fails, main handles that one box directly (<code>/impl</code> for build work, <code>/dev</code> otherwise). Isolation is given up, progress isn't.</li>
+  <li><b>Merge conflict</b> → it stops and reports. Once you've resolved it, the loop resumes from that box's merge.</li>
+  <li><b>Cleanup</b> → before stopping or finishing, the sessions and workspaces created by this call are reviewed; merged ones are removed, and anything left uncommitted or unmerged is reported with its path and reason.</li>
 </ul>
-
 <h3>/impl — the workflow adapts automatically to the size of the work</h3>
 <p>impl first judges the <b>scale</b> of the request, then picks an agent setup to match. It won't wrap a tiny change in heavy process, and it layers design and verification thickly onto big ones.</p>
 <table>
@@ -247,7 +228,7 @@ N2 experiment┘        ↑
 <table>
   <tr><th>Skill</th><th>Role</th><th>Origin</th></tr>
   <tr><td><code>dev</code></td><td>Build the work flowchart and orchestrate task-by-task execution</td><td><span class="badge b-own">original</span></td></tr>
-  <tr><td><code>dev-loop</code></td><td>Auto-repeat and parallelize the execution loop across three session tiers (<code>--followup</code> clears the backlog)</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>dev-loop</code></td><td>Auto-repeat and parallelize the execution loop by delegating each box to its own session</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>impl</code></td><td>Feature/refactor orchestration</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>adr</code></td><td>Architecture decision records</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>tdd-workflow</code></td><td>Enforce TDD (unit/integration/E2E coverage)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
@@ -361,12 +342,12 @@ CLAUDE.md . Then walk me through the "Required settings" section.</code></pre>
 <ul>
   <li><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> — <b>Required.</b> Without this flag, <b>nested sub-spawning</b> (a sub-agent spawning yet another sub-agent) is impossible. <code>/impl</code>'s agent chain and <code>synthesizer</code>'s architect·critic convergence only work on top of it, so those steps fail when it's off.</li>
   <li><code>worktree.baseRef</code> — <b>Required.</b> The base commit used when impl's parallel tracks create isolated workspaces (worktrees).</li>
-  <li><code>statusLine</code> — <b>Required if you use <code>/dev-loop</code>.</b> Not decoration but <b>instrumentation</b>. The only source the commander has for measuring its own context is <code>~/.claude/status/&lt;session-id&gt;.json</code>, and that file is written by <b>your status line command</b>, not by Claude. Without it the commander can't see itself fill up, and a commander that can't see that misses its swap point.</li>
+  <li><code>statusLine</code> — <b>Required if you use the <code>/dev</code> family.</b> Not decoration but <b>instrumentation</b>. A session's only source for measuring its own context is <code>~/.claude/status/&lt;session-id&gt;.json</code>, and that file is written by <b>your status line command</b>, not by Claude. Without it a session can't see itself fill up, and it misses the point where it should stop and hand off.</li>
 </ul>
 <div class="note"><b>Already running your own status line?</b> · <b>Don't overwrite it</b> with the command above. Use <b>method ②</b> described in the header of <code>scripts/status-writer.py</code>: four lines at the very top of your existing script (before it reads stdin). It reads stdin on your script's behalf, records it, and puts it back, so your status line keeps working as before.</div>
 
 <h3>Optional setup — Telegram (the postman)</h3>
-<p>Connect the postman to keep the loop running while you're away from the desk. <b><code>/dev-loop</code> runs fine without it</b> — questions just appear on screen only, and you have to be there.</p>
+<p>The postman is a <b>standalone relay</b> that carries Claude session questions out over Telegram. It is not a component the <code>/dev-loop</code> family requires, and <b><code>/dev-loop</code> runs fine without it</b> — questions just appear on screen only, and you have to be there.</p>
 <ol>
   <li><b>Create a bot.</b> Send <code>/newbot</code> to <code>@BotFather</code> on Telegram; once you pick a name and username it hands you a <b>single token line</b>.</li>
   <li><b>Put the token in a file, nowhere else.</b> The default location is <code>~/.claude/dev-run/telegram-bot-token</code>; point <code>POSTMAN_TOKEN_FILE</code> elsewhere if you prefer.
@@ -391,10 +372,10 @@ install -m 600 /dev/null ~/.claude/dev-run/telegram-bot-token
 <div class="note" style="border-left-color:#c0392b"><b style="color:#c0392b">Two security musts</b><br>
 · <b>Don't leave <code>never_send</code> empty.</b> The postman <b>captures session screens</b> and sends them to Telegram. Register the paths of any plaintext personal files here so their contents can't ride out in a capture.<br>
 · <b>An empty <code>allowed_user_ids</code> discards every incoming update.</b> That's the safe default, but launching with it empty looks exactly like a silently dead channel.</div>
-<p style="font-size:13px;color:var(--muted)">The postman is <b>one per machine, one project at a time</b> — a Telegram bot has exactly one receiver, so two projects running at once intercept each other's messages. It's only needed while a dev loop is running, so it isn't registered as an always-on service and <b>retires itself</b> when the commander has been absent for a while. Full protocol and file layout live in <code>skills/postman/README.md</code>.</p>
+<p style="font-size:13px;color:var(--muted)">The postman is <b>one per machine, one project at a time</b> — a Telegram bot has exactly one receiver, so two projects running at once intercept each other's messages. You bring it up only when you need it, so it isn't registered as an always-on service and <b>retires itself</b> when the session it serves has been quiet for a while. Full protocol and file layout live in <code>skills/postman/README.md</code>.</p>
 
 <h3>Optional setup — tmux</h3>
-<p><code>/dev-loop</code> launches its commander and worker sessions through tmux. Without <code>tmux</code> it stops at the pre-spawn check. <code>/dev</code> and <code>/impl</code> on their own don't need it.</p>
+<p><code>/dev-loop</code> launches a worker session per box through tmux. Without <code>tmux</code> it stops at the pre-spawn check. <code>/dev</code> and <code>/impl</code> on their own don't need it.</p>
 
 <footer>
   <p><b>Credits</b></p>

@@ -12,7 +12,7 @@ A collection of **workflow tools** for building software in Claude Code. Plannin
 
 Multi-session development doesn't line the work up as a single sequence — it lays it out as a **work flowchart**. Each task is one box, connected by "what has to finish before this can start", so whatever can run at once does, and points where the result changes the path are handled as branches.
 
-`/dev-loop` goes one step further. **It moves the orchestrating role off the session you're talking to and into a separate session, then swaps that session out wholesale once it fills up with conversation.** The plan survives the swap, so development no longer stops at a context limit. And because it can **ask and receive answers over Telegram**, the loop keeps running while you're away from the desk.
+`/dev-loop` goes one step further. **It hands each box of the flowchart to a separate Claude session** working in its own isolated worktree, and repeats that delegation until the plan is done. Only irreversible operations and design choices a human has to make stay on your screen.
 
 ## What's inside?
 
@@ -20,7 +20,7 @@ It's organized into four families.
 
 | Family | What it does | Entry command |
 |--------|--------------|---------------|
-| **/dev-loop family** | Multi-session development orchestration — lays the work out as a flowchart, then loops research → design → build → review to completion. Three-tier sessions + Telegram remote control | `/dev` · `/dev-loop` · `/impl` · `/adr` |
+| **/dev-loop family** | Multi-session development orchestration — lays the work out as a flowchart, then loops research → design → build → review to completion. Each node is delegated to its own session | `/dev` · `/dev-loop` · `/impl` · `/adr` |
 | **/prp family** | A one-shot pipeline from requirements → plan → implementation → PR | `/prp-prd` · `/prp-plan` · `/prp-implement` · `/prp-pr` · `/prp-commit` |
 | **Memory family** | Auto-memory that lets skills/agents remember what they learned for the next run | `/add-memory` |
 | **Other** | Conditional rule-trigger examples, etc. | `triggers_CLAUDE.md` |
@@ -45,7 +45,7 @@ anything would collide with what I already have.
 
 ```
 Port only the /dev-loop family from JKBuilders into my system.
-Install skills/dev · dev-loop · impl · adr · tdd-workflow · postman and the
+Install skills/dev · dev-loop · impl · adr · tdd-workflow and the
 agents/* they spawn, plus rules/ · rules-detail/ · scripts/ , under my
 ~/.claude/ , and merge the triggers in triggers_CLAUDE.md into my global
 CLAUDE.md . Then walk me through the README's "Required setup" section.
@@ -53,7 +53,7 @@ CLAUDE.md . Then walk me through the README's "Required setup" section.
 
 ## Required setup
 
-The `/dev-loop` family needs all three of these to run fully. The other families (`/prp`, memory) only need item 1.
+The `/dev-loop` family needs items 1 and 3 (item 2 is optional). The other families (`/prp`, memory) only need item 1.
 
 ### 1. settings.json
 
@@ -70,11 +70,11 @@ The `/dev-loop` family needs all three of these to run fully. The other families
 
 - **`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — enables nested spawning (a sub-agent spawning another sub-agent). Without it, `/impl`'s chain and `synthesizer`'s convergence stall.
 - **`worktree.baseRef`** — the base commit parallel tracks branch their isolated worktrees from.
-- **`statusLine`** — not decoration, but **`/dev-loop`'s instrumentation**. It is the only source the commander session has for measuring its own context usage; without it the swap point is missed. If you already run your own status line script, graft the four lines described as **method ②** in the header of `scripts/status-writer.py`.
+- **`statusLine`** — not decoration, but **`/dev`'s instrumentation**. It is where a session reads its own context usage; without it the stop-and-hand-off point is missed. If you already run your own status line script, graft the four lines described as **method ②** in the header of `scripts/status-writer.py`.
 
-### 2. Telegram (optional — only needed to run unattended)
+### 2. Telegram (optional — only if you want the postman)
 
-The postman (`skills/postman/`) is a relay that forwards session questions to Telegram and injects your reply back into that session's screen. **`/dev-loop` runs fine without it** — questions simply appear on screen only, and you have to be at the desk.
+The postman (`skills/postman/`) is a **standalone relay** that forwards Claude session questions to Telegram and injects your reply back into that session's screen. It is not a component the `/dev-loop` family requires, and **`/dev-loop` runs fine without it** — questions simply appear on screen only, and you have to be at the desk.
 
 1. Create a bot with `/newbot` via `@BotFather` on Telegram and take the token.
 2. Put the token **in a file, nowhere else**. The default location is `~/.claude/dev-run/telegram-bot-token`; point `POSTMAN_TOKEN_FILE` elsewhere if you prefer.
@@ -113,7 +113,7 @@ See `skills/postman/README.md` for the full protocol and file layout.
 
 ### 3. tmux
 
-`/dev-loop` launches the commander and worker sessions through tmux. Without `tmux` it stops at the pre-spawn check. `/dev` and `/impl` on their own don't need it.
+`/dev-loop` launches the worker session for each node through tmux. Without `tmux` it stops at the pre-spawn check. `/dev` and `/impl` on their own don't need it.
 
 ## Things to watch out for
 
