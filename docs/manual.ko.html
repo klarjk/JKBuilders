@@ -232,9 +232,7 @@ N2 연구 ─┘        ↑
   <tr><td><code>impl</code></td><td>기능·리팩토링 오케스트레이션</td><td><span class="badge b-own">자체</span></td></tr>
   <tr><td><code>adr</code></td><td>아키텍처 결정 문서화</td><td><span class="badge b-own">자체</span></td></tr>
   <tr><td><code>tdd-workflow</code></td><td>TDD 강제 (단위·통합·E2E 커버리지)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
-  <tr><td><code>postman</code></td><td>텔레그램 중계 프로그램 — 질문을 내보내고 답을 세션 화면에 되넣음 <span style="color:var(--muted)">(선택)</span></td><td><span class="badge b-own">자체</span></td></tr>
 </table>
-<p style="font-size:13px;color:var(--muted)"><code>postman</code>은 슬래시 명령이 아니라 <b>따로 띄우는 파이썬 프로그램</b>입니다. <code>/dev-loop</code>가 시작할 때 살아 있는지 확인하고 없으면 띄웁니다. 설치돼 있지 않으면 그 단계를 건너뛰고 "텔레그램 통로 없음"을 한 줄 알린 뒤 그대로 진행합니다.</p>
 
 <h3>구성 — 에이전트</h3>
 <table>
@@ -319,7 +317,7 @@ agents/ · commands/ · skills/ · rules/ · rules-detail/ · scripts/ 를 내
 내 전역 ~/.claude/CLAUDE.md 에 병합해줘. 겹치는 항목이 있으면 먼저 알려줘.</code></pre>
 <p><b>계열만 골라 이식</b> (예: /dev-loop 계열만)</p>
 <pre><code>JKBuilders의 /dev-loop 계열만 내 시스템에 이식해줘.
-skills/dev · dev-loop · impl · adr · tdd-workflow · postman 과 이들이 스폰하는
+skills/dev · dev-loop · impl · adr · tdd-workflow 와 이들이 스폰하는
 agents/* , 그리고 rules/ · rules-detail/ · scripts/ 를 ~/.claude/ 아래에 설치하고,
 triggers_CLAUDE.md 의 트리거를 내 전역 CLAUDE.md 에 병합해줘.
 설치 후 '필수 설정' 항목을 순서대로 안내해줘.</code></pre>
@@ -344,34 +342,6 @@ triggers_CLAUDE.md 의 트리거를 내 전역 CLAUDE.md 에 병합해줘.
   <li><code>statusLine</code> — <b><code>/dev</code> 계열을 쓴다면 필수.</b> 화면 장식이 아니라 <b>계측 배선</b>입니다. 세션이 자기 대화 용량을 재는 재료가 <code>~/.claude/status/&lt;세션ID&gt;.json</code>이고, 이 파일을 만드는 것은 클로드가 아니라 <b>사용자의 상태줄 명령</b>입니다. 없으면 세션이 자기 포화를 못 재고, 못 재면 정지·인수인계 시점을 놓칩니다.</li>
 </ul>
 <div class="note"><b>이미 쓰는 상태줄이 있다면</b> · 위 명령으로 <b>덮어쓰지 마세요.</b> <code>scripts/status-writer.py</code> 머리말의 <b>②번 방식</b>대로, 쓰던 스크립트 맨 앞(표준입력을 읽기 <i>전</i>)에 네 줄만 얹으면 됩니다. 표준입력을 대신 읽어 기록하고 같은 내용을 되돌려 놓으므로 기존 상태줄은 평소대로 돕니다.</div>
-
-<h3>선택 설정 — 텔레그램 연결 (우체부)</h3>
-<p>우체부는 Claude 세션의 질문을 텔레그램으로 나르는 <b>독립 중계 프로그램</b>입니다. <code>/dev-loop</code> 계열이 요구하는 구성 요소가 아니며, <b>연결하지 않아도 <code>/dev-loop</code>는 그대로 돕니다</b> — 질문이 화면으로만 오고 사용자가 자리에 있어야 할 뿐입니다.</p>
-<ol>
-  <li><b>봇을 만듭니다.</b> 텔레그램에서 <code>@BotFather</code>에게 <code>/newbot</code>을 보내고 이름·사용자명을 정하면 <b>토큰 한 줄</b>을 줍니다.</li>
-  <li><b>토큰을 파일에만 넣습니다.</b> 기본 자리는 <code>~/.claude/dev-run/telegram-bot-token</code>이고, 다른 자리에 두려면 <code>POSTMAN_TOKEN_FILE</code> 환경변수로 가리킵니다.
-<pre><code>mkdir -p ~/.claude/dev-run
-install -m 600 /dev/null ~/.claude/dev-run/telegram-bot-token
-# 편집기로 열어 토큰 한 줄만 붙여 넣습니다</code></pre>
-  <span style="font-size:13px;color:var(--muted)"><code>echo</code>로 넣지 마세요 — 셸 기록에 토큰이 그대로 남습니다.</span></li>
-  <li><b>자기 user id를 확인합니다.</b> 만든 봇에게 1:1로 아무 말이나 보낸 뒤 아래를 돌리면 <code>from.id</code>가 보입니다.
-<pre><code>python3 -c "import urllib.request,json,pathlib; \
-  t=pathlib.Path.home().joinpath('.claude/dev-run/telegram-bot-token').read_text().strip(); \
-  print(json.load(urllib.request.urlopen('https://api.telegram.org/bot'+t+'/getUpdates')))"</code></pre></li>
-  <li><b>설정 파일을 600으로 먼저 만들고</b> 편집기로 채웁니다 — 편집기가 기본으로 만들면 644로 남습니다.
-<pre><code>install -m 600 /dev/null ~/.claude/postman/config.json</code></pre>
-<pre><code>{
-  "allowed_user_ids": [123456789],
-  "chat_id": 123456789,
-  "never_send": ["~/개인정보.md"]
-}</code></pre></li>
-  <li><b>점검합니다.</b> 설정·권한·토큰을 한 번에 훑고 끝납니다(네트워크를 쓰지 않습니다). <b>주의가 1건이라도 찍히면 고치고 다시 돌립니다</b> — 종료코드는 주의가 있어도 0이라, 통과 여부는 출력 마지막 줄의 건수로 읽습니다.
-<pre><code>python3 ~/.claude/skills/postman/postman/bot.py --check</code></pre></li>
-</ol>
-<div class="note" style="border-left-color:#c0392b"><b style="color:#c0392b">보안 — 두 가지는 꼭</b><br>
-· <b><code>never_send</code>를 비워 두지 마세요.</b> 우체부는 세션 <b>화면을 캡처해</b> 텔레그램으로 보냅니다. 평문으로 개인정보가 담긴 파일 경로를 여기 등록해야 그 내용이 화면에 실려 나가는 것을 막습니다.<br>
-· <b>허용 목록(<code>allowed_user_ids</code>)이 비면 모든 수신을 폐기합니다.</b> 안전한 기본값이지만, 비워 둔 채 띄우면 통로가 조용히 죽은 것처럼 보입니다.</div>
-<p style="font-size:13px;color:var(--muted)">우체부는 <b>한 기계에 하나, 한 프로젝트만</b> 맡습니다 — 텔레그램 봇 하나에는 수신자가 하나뿐이라 두 프로젝트를 동시에 돌리면 서로 메시지를 가로챕니다. 필요할 때만 띄우는 물건이라 상시 감시 서비스로 등록하지 않고, 맡은 세션이 오래 조용하면 <b>스스로 물러납니다.</b> 자세한 규약·파일 구조는 <code>skills/postman/README.md</code>에 있습니다.</p>
 
 <h3>선택 설정 — tmux</h3>
 <p><code>/dev-loop</code>는 칸을 맡을 작업 세션을 tmux로 띄웁니다. <code>tmux</code>가 없으면 스폰 전 검사에서 멈춥니다. <code>/dev</code>·<code>/impl</code> 단독 사용에는 필요 없습니다.</p>
