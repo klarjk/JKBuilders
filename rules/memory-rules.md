@@ -15,7 +15,8 @@
 ---
 name: 이슈/quirk 이름
 description: 한 줄 요약 — MEMORY.md 인덱스 hook으로 사용
-type: project
+metadata:
+  type: project
 ---
 
 본문 (증상·원인·맥락)

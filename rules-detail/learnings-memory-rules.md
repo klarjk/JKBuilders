@@ -8,7 +8,7 @@ Claude의 학습 데이터에 없거나 컷오프 이후 변경된 **외부 사�
 2. **세션 내 직접 실험·실행** — 재현 가능한 명령/입력으로 결과를 직접 관찰
 3. **2차 출처 다중 확인** — 신뢰 가능한 블로그·이슈 트래커 등에서 동일 사실이 2건 이상 일치할 때만 (단독 인용 불가)
 
-추측·일반 통념·1회성 관찰만으로는 저장하지 않는다. **저장은 수동 트리거 전용** — 자동 저장 엔진이 `type: learning`과 신규 메타 필드를 인식하지 않을 수 있으므로, Claude가 명시적으로 Write 호출로 기록한다.
+추측·일반 통념·1회성 관찰만으로는 저장하지 않는다. 저장은 Claude가 명시적으로 Write를 호출해 기록한다.
 
 ## 저장 위치 분기
 
@@ -24,6 +24,7 @@ Claude의 학습 데이터에 없거나 컷오프 이후 변경된 **외부 사�
 - 프로젝트: 해당 프로젝트가 핀한 langchain 0.3 특정 quirk, 프로젝트 빌드 환경에서만 재현되는 도구 동작
 - **Do:** 동일 도구라도 "버전 무관 일반 동작" → 전역, "프로젝트가 사용하는 특정 버전 quirk" → 프로젝트
 - **Don't:** 프로젝트 코드 자체의 재발성 quirk·설계 맥락은 본 섹션이 아니라 `rules/memory-rules.md`의 `project_known_issue_*` 패턴 사용
+- **Don't:** 특정 스킬·에이전트 실행 중에만 재현되는 사이트·API 특이 동작은 본 섹션이 아니라 `~/.claude/skill-memory/<스킬명>/`·`agent-memory/<에이전트명>/`에 `type: quirk`(최상위)로 기록
 
 ## 파일 구조
 
@@ -31,7 +32,8 @@ Claude의 학습 데이터에 없거나 컷오프 이후 변경된 **외부 사�
 ---
 name: 학습 사실 이름
 description: 한 줄 요약 — MEMORY.md 인덱스 hook으로 사용
-type: learning
+metadata:
+  type: learning
 source: official_docs | experiment | research
 source_url: https://...           # source가 official_docs/research일 때 필수
 verified_date: 2026-04-25         # 저장·재검증 시점 (ISO date, 필수)
