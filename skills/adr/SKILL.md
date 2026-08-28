@@ -63,19 +63,19 @@ description: 아키텍처 결정을 ADR 문서로 작성하는 스킬. 설계 �
 
 ### Phase 2B — synthesizer 검증 (난이도 중·상)
 
-1. `synthesizer` 에이전트를 `subagent_type="synthesizer"`로 스폰한다. 프롬프트에 결정할 문제·배경·후보안·제약을 전달하고, **ADR 본문을 스크래치패드 파일에 Write한 뒤 회신에는 경로와 수렴 요약만 담으라**고 지시한다. 자식(architect·critic)에게도 같은 방식을 쓰라고 함께 지시한다.
+1. `synthesizer` 에이전트를 `subagent_type="synthesizer"`로, **반드시 `name`을 붙여**(예: `name="adr-synth"`) 스폰한다 — 이름 없는 부모는 자식(architect·critic) 산출을 회수하지 못한다. 프롬프트에 결정할 문제·배경·후보안·제약을 전달하고, **ADR 본문을 스크래치패드 파일에 Write한 뒤 회신에는 경로와 수렴 요약만 담으라**고 지시한다. **파일 Write 지시는 architect에게만 물려주게 한다** — critic은 도구가 Read·Grep·Glob뿐이라 쓸 수 없고, 비평은 반환값으로 받으면 된다. **자식은 `name` 없이 스폰하라고 함께 지시한다** — 이름을 붙이면 산출이 반환되지 않는다.
 2. synthesizer의 회신을 기다렸다가, 회신이 지목한 경로를 Read해 ADR 본문을 회수한다.
 3. Phase 3(자가 점검 sweep)으로 진행 — 회수한 본문을 ADR 파일 내용으로 사용한다.
 
-- **Do:** synthesizer **하나만** 스폰한다. synthesizer가 내부에서 architect·critic을 스폰·수렴한다.
+- **Do:** synthesizer **하나만**, **이름을 붙여** 스폰한다. synthesizer가 내부에서 architect·critic을 스폰·수렴한다.
 - **Don't:** architect·critic을 메인이 직접 스폰하지 않는다(수렴 오케스트레이션은 synthesizer 담당). 긴 산출을 회신 본문으로 받는다(잘린다).
 - **Don't:** 회신 전 산출 폴더를 폴링하거나 파일 부재로 실패를 판정한다(지연이 의심되면 위임처에 상태를 물어 회신으로 판정), 회신이 지목하지 않은 중간 산출을 최종본으로 채택한다.
 
-**손자 산출 오통지.** architect·critic의 산출이 synthesizer를 건너뛰고 메인에 배달될 수 있다 — 발신자가 synthesizer가 아니면 이 상황이고, 같은 내용의 반복 도착이 추가 확증이다. 받은 산출을 스크래치패드에 저장해 경로를 `SendMessage`로 넘기고, 통지 결함이므로 재요청을 멈추라고 명시해 재개시킨다. 응답이 없다고 synthesizer를 버리고 재스폰하거나 메인이 ADR을 직접 쓰지 않는다. 실행 전 `~/.claude/memory/feedback_misrouted_result_relay_to_parent.md`를 Read해 적용한다.
+**손자 산출이 메인으로 새는 경우.** architect·critic의 산출이 synthesizer를 건너뛰고 메인에 도착하면 **synthesizer가 자식에게 이름을 붙여 스폰한 것**이다 — 발신자가 synthesizer가 아닌 것이 식별 신호다. 받은 산출을 스크래치패드에 저장해 경로를 `SendMessage`로 synthesizer에 넘기면서 **다음 자식은 `name` 없이 띄우라**고 함께 지시한다. 응답이 없다고 synthesizer를 버리고 재스폰하거나 메인이 ADR을 직접 쓰지 않는다. 실행 전 `~/.claude/memory/feedback_misrouted_result_relay_to_parent.md`를 Read해 적용한다.
 
 ### Phase 2C — 기존 ADR 개정
 
-1. `synthesizer`를 `subagent_type="synthesizer"`로 스폰한다. **개정 대상 ADR의 절대경로**·개정 요구·확정된 사용자 결정을 전달하고, 산출은 Phase 2B와 같은 방식(스크래치패드 Write + 경로 회신)으로 받는다.
+1. `synthesizer`를 `subagent_type="synthesizer"`로, **반드시 `name`을 붙여**(예: `name="adr-synth"`) 스폰한다. **개정 대상 ADR의 절대경로**·개정 요구·확정된 사용자 결정을 전달하고, 산출은 Phase 2B와 같은 방식(스크래치패드 Write + 경로 회신)으로 받는다.
 2. 회신이 지목한 경로를 Read해 본문을 회수하고 Phase 3으로 진행한다.
 
 > **Do:** 개정도 `synthesizer` 하나만 스폰한다

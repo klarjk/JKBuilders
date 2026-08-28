@@ -111,7 +111,7 @@ ultra 모드는 계획 작성 완료 후 plan-reviewer 3개를 병렬 스폰해 
 ### 절차
 
 1. **계획 작성** — 위 계획 형식대로 구현 계획을 완성한다.
-2. **분담 3-reviewer 병렬 스폰** — 단일 응답에서 plan-reviewer 3개를 동시 호출(`subagent_type: "plan-reviewer"`). 각 호출에 계획 전문(또는 파일 경로) + 담당 focus + "담당 영역 외 결함은 기재 금지"를 전달한다.
+2. **분담 3-reviewer 병렬 스폰** — 단일 응답에서 plan-reviewer 3개를 동시 호출(`subagent_type: "plan-reviewer"`). 각 호출에 계획 전문(또는 파일 경로) + 담당 focus + "담당 영역 외 결함은 기재 금지"를 전달한다. **`name` 인자는 주지 않는다** — 이름을 붙이면 비평 3건이 반환되지 않고 유실된다.
 
    | reviewer | focus (담당 영역) |
    |---|---|
@@ -124,6 +124,7 @@ ultra 모드는 계획 작성 완료 후 plan-reviewer 3개를 병렬 스폰해 
 
 ### 주의
 
+- plan-reviewer 스폰이 비동기 안내문(`Async agent launched successfully`)만 반환하면 즉시 중단한다 — 당신이 `name` 없이 스폰돼 비평을 회수할 수 없는 상태다. 호출자에게 `name`을 붙여 재스폰해 달라고 요청하고 종료한다.
 - plan-reviewer는 매번 fresh 스폰. 3개 간 컨텍스트 공유 없음.
 - 비평이 계획의 전제(목표·범위)를 흔드는 critical을 제기하면 본문 수정으로 흡수하되, 흡수 불가하면 "후속 의사결정 필요"로 표기해 반환한다.
 - 루프는 1회로 종료. 수정본을 다시 비평하지 않는다.

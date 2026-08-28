@@ -121,7 +121,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 **Do:** ②는 단위·통합 테스트로 검증 가능해도 *e2e*가 불가능하면 검증 없음으로 본다(tdd-guide 단위·통합 테스트는 두 경로 모두 수행).
 **Don't:** 사용자 발화·코드베이스 근거 없이 임의로 검증을 생략한다 — 근거가 없으면 검증 있음(정식 경로)이 기본이다.
 
-**대의 설계 단계는 변경 범위로 갈린다** — 신규 첫 구현이거나 모듈 경계·데이터 모델·외부 인터페이스가 두루 바뀌면 synthesizer를, 기존 모듈 내부 구조만 바뀌면 architect를 스폰하고, 그 분기 결과를 state.json `design_agent`에 기록한다. **요청에 확정 ADR/설계 문서 경로가 명시돼 있으면 설계 단계(architect/synthesizer)를 스폰하지 않고 그 문서를 `02_architect.md`로 채택(복사 또는 경로 참조)한 뒤 planner부터 시작한다.** synthesizer는 ADR을 본문 반환이 기본이므로, 위임 프롬프트에 최종 ADR을 `02_architect.md`에 Write하도록 명시한다. **대의 planner는 항상 ultra 모드**(위임 프롬프트에 `ultra` 포함)로 스폰해 plan-reviewer 3 분담 자가 비평을 활성화한다(중은 미적용).
+**대의 설계 단계는 변경 범위로 갈린다** — 신규 첫 구현이거나 모듈 경계·데이터 모델·외부 인터페이스가 두루 바뀌면 synthesizer를, 기존 모듈 내부 구조만 바뀌면 architect를 스폰하고, 그 분기 결과를 state.json `design_agent`에 기록한다. **요청에 확정 ADR/설계 문서 경로가 명시돼 있으면 설계 단계(architect/synthesizer)를 스폰하지 않고 그 문서를 `02_architect.md`로 채택(복사 또는 경로 참조)한 뒤 planner부터 시작한다.** synthesizer는 ADR을 본문 반환이 기본이므로, 위임 프롬프트에 최종 ADR을 `02_architect.md`에 Write하도록 명시한다. **synthesizer는 반드시 `name`을 붙여 스폰한다**(예: `name="impl-synth"`) — 이름 없는 부모는 자식(architect·critic) 산출을 회수하지 못한다. **대의 planner는 항상 ultra 모드**(위임 프롬프트에 `ultra` 포함)로 스폰해 plan-reviewer 3 분담 자가 비평을 활성화한다(중은 미적용).
 
 크기가 모호하면 큰 쪽으로 분류.
 
@@ -179,7 +179,7 @@ PRD 완료 안내 후 세션을 종료한다. 같은 세션에서 설계(archite
 
 ### 1단계 — planner (중·대만)
 
-크기=대면 위임 프롬프트에 `ultra`를 포함한다(중은 미적용). 설계 단계(architect/synthesizer) 선행 스폰은 0단계 참조.
+크기=대면 위임 프롬프트에 `ultra`를 포함하고, **planner를 반드시 `name`을 붙여 스폰한다**(예: `name="impl-planner"`) — 이름 없는 planner는 ultra의 plan-reviewer 비평 3건을 회수하지 못한다. 중은 ultra 미적용이라 `name` 불필요. 설계 단계(architect/synthesizer) 선행 스폰은 0단계 참조.
 
 1. planner 스폰, `03_plan.md` Write + 트랙 분할 결정 요청. `track_id`(A·B…)는 planner가 정하고, planner가 직접 `instructions/<track_id>.md`를 Write한다. 메인은 경로를 미리 만들지 않는다. 위임 프롬프트에 ① `00_prd.md`가 있으면 Read 지시 ② 위 "테스트 tier 판정" 3-tier 기준을 주입하고, `test_tier="bdd"` 트랙의 `instructions/<id>.md`는 behavior(Given-When-Then) 시나리오마다 독립 선행 RED-GREEN 단계로 쪼개 작성하도록, `test_tier="tested"` 트랙은 구현 단계 뒤에 사후 테스트 단계(정상 경로 + 위험·경계)를 두도록, `test_tier="none"` 트랙은 테스트 단계 없이 구현 단계만 쓰도록 지시한다(planner 정의는 수정하지 않고 프롬프트로만 주입). **③ `01_intent.md`에 `## 사용자 성공 조건`이 있으면 각 항목을 `03_plan.md`의 Success Criteria 섹션(없으면 신설)에 원문 그대로 포함하고, 각 조건에 대응하는 사용자 여정을 Testing Strategy의 E2E 골격에 최소 1개씩 배치하도록 지시한다.** **④ `instructions/<id>.md`와 `03_plan.md`의 Success Criteria에 단위 트랙의 테스트 실행 범위를 적을 때는 변경 범위 테스트로 한정하도록 지시한다 — 전체 스위트는 5단계 통합, e2e는 7단계가 단독으로 수행한다.**
 
