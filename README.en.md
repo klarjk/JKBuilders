@@ -14,6 +14,10 @@ Multi-session development doesn't line the work up as a single sequence — it l
 
 `/dev-loop` goes one step further. **It hands each box of the flowchart to a separate Claude session** working in its own isolated worktree, and repeats that delegation until the plan is done. Only irreversible operations and design choices a human has to make stay on your screen.
 
+The sessions come in three tiers: the **front desk** you sit in front of, the **commander** that reads the plan and hands out boxes, and the **worker** sessions that each take one box. The front desk watches how much of its context the commander has burned and swaps in a fresh commander before it fills up, so a long plan never stalls on a context limit. Each project gets its own front desk, so **one machine can run several repositories at once**.
+
+You can cut in at any time with `Esc` to change direction, and that reminder is printed on every watch round.
+
 ## What's inside?
 
 It's organized into four families.
@@ -72,9 +76,13 @@ The `/dev-loop` family needs both of the items below. The other families (`/prp`
 - **`worktree.baseRef`** — the base commit parallel tracks branch their isolated worktrees from.
 - **`statusLine`** — not decoration, but **`/dev`'s instrumentation**. It is where a session reads its own context usage; without it the stop-and-hand-off point is missed. If you already run your own status line script, graft the four lines described as **method ②** in the header of `scripts/status-writer.py`.
 
-### 2. tmux
+### 2. tmux · jq
 
-`/dev-loop` launches the worker session for each node through tmux. Without `tmux` it stops at the pre-spawn check. `/dev` and `/impl` on their own don't need it.
+`/dev-loop` launches both the commander and the worker sessions through tmux. Without `tmux` no session comes up. `jq` is used to tally the incidents unattended sessions log (`scripts/dl-incident.sh`); without it only that tally comes back empty and the loop still runs. `/dev` and `/impl` on their own need neither.
+
+### 3. Accept the project trust prompt
+
+An unattended session cannot get past the "do you trust this folder?" dialog Claude Code shows on first run. `/dev-loop` checks for that acceptance before spawning and hands back to you rather than spawning without it. **Run `claude` once in the target project yourself and accept.**
 
 ## Things to watch out for
 
@@ -83,6 +91,7 @@ The `/dev-loop` family needs both of the items below. The other families (`/prp`
 - **Mind the model pins.** Each agent's frontmatter pins a `model: opus / sonnet / fable`. If your plan can't access that model, adjust it.
 - **Auto-memory only works where the block is installed.** Attach it to the skills/agents you want via `/add-memory`.
 - **The `/prp` family writes to `.claude/PRPs/`** — requirements, plans, and reports accumulate there.
+- **`/dev-loop` runs in screen mode only in this distribution.** Upstream it can also report progress and take instructions over a Telegram channel, but that piece is a fork of someone else's plugin and is not redistributed here. So every startup prints one warning that the channel is unavailable and it is falling back to screen mode — **that is expected, and the loop runs on screen exactly as it should.**
 
 ## Credits
 

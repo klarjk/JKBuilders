@@ -109,7 +109,7 @@
 <h2 style="border:none;padding:0;color:var(--devloop)">1. /dev-loop family — multi-session orchestration</h2>
 <p>The core workflow for building a large feature across multiple sessions. It plans, decides the design, and runs implementation, testing, and review in one flow.</p>
 
-<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Simplest way</b> · Just run <code>/dev-loop</code> followed by <b>one sentence describing what you want to build</b>. e.g. <code>/dev-loop add a user profile editing feature</code>. It takes care of the rest — draws the whole job as a <b>work flowchart</b>, researches what it needs, makes the design decisions, and runs build and review in order.</div>
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Simplest way</b> · Just run <code>/dev-loop</code> followed by <b>one sentence describing what you want to build</b>. e.g. <code>/dev-loop add a user profile editing feature</code>. It takes care of the rest — draws the whole job as a <b>work flowchart</b>, researches what it needs, makes the design decisions, and runs build and review in order. Even if the plan is long enough to fill up the context, <b>you never have to call it again</b> — it swaps sessions internally and keeps going.</div>
 
 <h3>How it flows</h3>
 <div class="flow">
@@ -120,7 +120,7 @@
 </div>
 <ul>
   <li><b>/dev</b> — Builds a development plan (DEV_PLAN) interactively. It lays the whole job out as a <b>work flowchart</b>, then runs whichever tasks have their prerequisites met.</li>
-  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. Each box of the flowchart is handed to its own isolated session; only irreversible operations and design choices stay on your screen.</li>
+  <li><b>/dev-loop</b> — <b>Auto-repeats</b> that execution loop until the plan is complete. Sessions are split into three tiers — front desk, commander, worker — and each box of the flowchart is handed to its own isolated session; only irreversible operations and design choices go back to you. Burning down accumulated follow-ups (<code>--followup</code>) runs on the same structure.</li>
   <li><b>/impl</b> — Takes one feature or refactor and runs the design → plan → build → review agent chain automatically.</li>
   <li><b>/adr</b> — Records an architecture decision. Easy calls are handled directly; hard ones go to a design + critique convergence agent.</li>
 </ul>
@@ -131,6 +131,7 @@
              ├─→ N3 build ─→ N5 deploy
 N2 experiment┘        ↑
    └→ ◇ format differs? ─(yes)→ N4 add conversion ┘</code></pre>
+<p style="font-size:13px;color:var(--muted)">Box numbers are actually prefixed with the plan number, as in <code>007-N1</code>, so that session names and work branches never collide when several plans are open.</p>
 <p>Three things follow naturally from drawing it this way.</p>
 <ul>
   <li><b>Whatever can run at once, runs at once</b> — tasks sharing the same prerequisites go together.</li>
@@ -158,38 +159,92 @@ N2 experiment┘        ↑
   <li>If e2e fails, the failing flow's files are matched against the "owned files" column to pin down which build caused it, and only that one re-runs. If the match is inconclusive, it reports to you rather than guessing.</li>
 </ul>
 
-<h3>/dev-loop — each box is handed to its own session</h3>
-<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you — it <b>hands one box of the flowchart to a separate Claude session</b> and repeats that delegation until the plan is done. Each delegated session is its own process, so its context is fully isolated.</p>
+<h4 style="margin:22px 0 8px;font-size:15px">The plan carries a glossary</h4>
+<p>Plans include a <b>terminology section</b>. Only three kinds of word go in it: words already being used under two names for the same thing, your own domain terms and coinages, and code identifiers paired with their everyday name. The commander is replaced whenever its context fills up and workers are new for every box, so any word not recorded here gets reinvented session by session.</p>
+<p><b>Your wording wins.</b> If you call something by a different name than the plan does, it swaps the plan's headword for yours without asking. Conversely, if a sub-agent ignores the agreed term and invents its own, the glossary stays and only the sentence being merged in is corrected.</p>
 
-<h4>Two kinds of session</h4>
+<h4 style="margin:22px 0 8px;font-size:15px">Burning down accumulated follow-ups</h4>
+<p>As development proceeds, every plan accumulates "later" items. <code>/dev --followup</code> (or <code>/dev-loop --followup</code> to run it automatically and in parallel to the end) <b>harvests the follow-up and deferred items</b> scattered across every plan into one register, then burns them down in batches.</p>
+<p>Each harvested item is checked against the code on five points — whether it's already done or dropped, what kind of work it is, which file it lands in, what it depends on, and <b>whether it's essential</b>. Then you get three questions.</p>
+<ul>
+  <li><b>Void and duplicate items</b> — approved for closing, then closed in their source plan.</li>
+  <li><b>Non-essential items</b> — tidying with no visible behaviour change, taste-level improvements, imperceptible performance polish, and so on, shown as one grouped question; approving drops them from this run into <b>deferred</b> (never deleted). Defect fixes and anything affecting behaviour stay essential even when the call is close.</li>
+  <li><b>New feature items</b> — approved one at a time; only what you approve enters this run.</li>
+</ul>
+
+<h3>/dev-loop — three tiers that run the plan to the end</h3>
+<p><code>/dev</code> stops after one heavy task and expects you to <code>/clear</code> and call it again. <code>/dev-loop</code> does that re-calling for you — it splits the work across three tiers of session, <b>front desk, commander and worker</b>, hands one box of the flowchart to a separate Claude session at a time, and repeats until the plan is done. Each session is its own process, so its context is fully isolated.</p>
+<p><b>The front desk is the point of it.</b> It watches how much of its context the commander has burned and <b>swaps in a fresh commander</b> before it fills up, so however long the plan is, it never stalls on a context limit. Each project gets its own front desk, so <b>one machine can run several repositories at once</b>.</p>
+
+<h4>Three kinds of session</h4>
 <table>
   <tr><th>Session</th><th>Where it runs</th><th>What it owns</th><th>What it doesn't</th></tr>
-  <tr><td><b>Main</b></td><td>The screen you're talking to</td><td>Picking boxes, delegating, collecting, judging; updating and committing the plan; irreversible operations and design sign-off</td><td>Building the boxes it delegated</td></tr>
-  <tr><td><b>Worker</b></td><td>One session per box (tmux)</td><td>Building and committing inside its own isolated workspace, then reporting</td><td>Writing the plan (read-only), edits outside its workspace</td></tr>
+  <tr><td><b>Front desk</b></td><td>The screen you're talking to</td><td>Spawning, watching and swapping the commander; telling you things; keeping the run ledger</td><td>Reading or updating the plan, delegating or collecting boxes, running git in the repo</td></tr>
+  <tr><td><b>Commander</b></td><td>One separate session (tmux)</td><td>Reading the plan to pick, delegate, collect and judge boxes; merging; updating and committing the plan; measuring its own context</td><td>Swapping itself out, irreversible operations, touching the ledger</td></tr>
+  <tr><td><b>Worker</b></td><td>One session per box (tmux)</td><td>Building and committing inside its own isolated workspace, then reporting</td><td>Writing the plan (read-only), edits outside its workspace, merging</td></tr>
 </table>
 <div class="flow">
-  <span class="step">main · pick next box</span><span class="arw">→</span>
+  <span class="step">front desk · spawn commander</span><span class="arw">→</span>
+  <span class="step">commander · pick next box</span><span class="arw">→</span>
   <span class="step">spawn worker · delegate</span><span class="arw">→</span>
-  <span class="step">collect report · verify</span><span class="arw">→</span>
-  <span class="step">merge · update plan</span><span class="arw">→</span>
-  <span class="step">next box</span>
+  <span class="step">collect · merge · update plan</span><span class="arw">→</span>
+  <span class="step">front desk · swap commander when full</span>
 </div>
-<p><b>Only two kinds of box stay with main.</b> ① Irreversible execution (deploys, data migrations, joining parallel boxes) — worker sessions run without approval prompts, so nobody is there to hit the brake. ② Design work whose owner is you — there is no one in a worker session to pick a mockup. Everything else (research, study, design docs, implementation) is delegated.</p>
+<p><b>Only two kinds of box go back to you.</b> ① Irreversible execution (deploys, data migrations) ② design work whose owner is you. An unattended commander never executes those — it parks them as "waiting on a human" and raises them. Other execution boxes (joining parallel branches, for instance) the commander handles itself, but <b>only one per round</b> — handling a box directly costs nearly three times the context of delegating it. Everything else (research, study, design docs, implementation) is delegated.</p>
 
-<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Workers always run in an isolated workspace</b> · A worktree is created even for a single box — sharing main's tree makes the two fight over commit locks. A box counts as done only when <b>the artifacts and commits actually exist</b> and the report's verification result passes. Reply count is never the test — several requests to one session come back merged into a single reply.</div>
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">Workers always run in an isolated workspace</b> · A worktree is created even for a single box — sharing the commander's tree makes the two fight over commit locks. A box counts as done only when <b>the artifacts and commits actually exist</b> and the report's verification result passes. Reply count is never the test — several requests to one session come back merged into a single reply.</div>
+
+<h4>How it talks to you — screen and channel</h4>
+<table>
+  <tr><th>Mode</th><th>How it works</th><th>When it applies</th></tr>
+  <tr><td><b>Screen</b></td><td>The front desk screen is the only point of contact</td><td>Forced with <code>screen</code>, or as the fallback when the channel environment isn't in place</td></tr>
+  <tr><td><b>Channel</b></td><td>The commander doubles as a Telegram conversation, so questions and reports reach your phone. <b>One project per machine</b></td><td>The default when you start with no argument. Needs a bot token and an allowed recipient</td></tr>
+</table>
+<div class="note" style="border-left-color:var(--devloop)"><b style="color:var(--devloop)">This distribution runs in screen mode only</b> · The Telegram transport behind channel mode is a fork of someone else's plugin, so <b>it is not redistributed in this repository.</b> Every startup therefore prints one warning that the channel environment isn't available and it is falling back to screen mode — <b>that is expected, and the loop runs on screen exactly as it should.</b></div>
+
+<h4>Arguments</h4>
+<table>
+  <tr><th>Argument</th><th>Meaning</th></tr>
+  <tr><td>(none)</td><td>Finds the plan automatically and tries channel mode first. If no plan exists yet, it builds one with <code>/dev</code> right there</td></tr>
+  <tr><td><code>screen</code> · <code>channel</code></td><td>Force screen mode / ask for channel mode</td></tr>
+  <tr><td><code>--resume &lt;plan path&gt;</code></td><td>Pick which plan to use when there are several</td></tr>
+  <tr><td><code>--followup</code></td><td>Instead of running a plan, burns down the <b>follow-up and deferred items</b> that have piled up, in batches</td></tr>
+</table>
+
+<h4>Cutting in while it runs</h4>
+<p>On <b>every watch round</b>, the front desk prints this on screen:</p>
+<pre><code>Watching (up to N seconds). To give an instruction now, press Esc once
+and then type — typing directly queues it until this round ends.</code></pre>
+<p><b>Press Esc once</b> and your instruction is taken right away. Type without it and the input waits until the round finishes. Cutting in doesn't lose the watch state: the instruction is handled first, then watching reopens on the same terms.</p>
+
+<h4>Where it asks for you</h4>
+<ul>
+  <li><b>Irreversible operations and design mockups</b> — the commander raises them instead of executing.</li>
+  <li><b>The third commander swap</b> — it asks whether to keep going and won't spawn the next commander before you answer. From then on it asks at every swap.</li>
+  <li><b>When it jams</b> — if the commander goes unresponsive or stops making progress, the front desk reports the situation and where the records are.</li>
+</ul>
+
+<h4>It doesn't stop — it swaps</h4>
+<p>It used to count delegated boxes and stop at a fixed number, leaving you to call it again on a fresh screen. <b>There is no count budget any more.</b> The stop decision is made by the commander's <b>measured context usage</b>, and when it fills up the front desk spawns a fresh commander and hands over. The handover material is the plan itself, so the commander writes its state into the plan and commits even right before delegating a box — a swap can arrive without warning, and uncommitted judgement goes with it.</p>
+<p>While running unattended, whenever instructions contradict each other or a step behaves differently than documented, each session appends a <b>one-line incident record</b> and carries on. The tally is reported at the start of the next run and when a run ends; <code>scripts/dl-incident.sh --tally</code> shows the contents.</p>
 
 <h4>Running things in parallel</h4>
 <p>When several boxes are ready, the eligible ones run <b>up to three at a time</b>. Eligibility needs both conditions — ① the files each will touch don't overlap, and ② their tests don't grab the same port, the same DB file, or the same external service at once. If either is uncertain, they run sequentially.</p>
-<p style="font-size:13px;color:var(--muted)">To run two or more build boxes at once, the plan must contain a <b>join box</b> whose prerequisites are all of them. If it doesn't, main adds that box to the plan first and then starts. Live worker screens are mirrored into a split pane by <code>scripts/dev-view.sh</code> — it is a read-only mirror, so a viewer failure never blocks the delegation.</p>
+<p style="font-size:13px;color:var(--muted)">To run two or more build boxes at once, the plan must contain a <b>join box</b> whose prerequisites are all of them. If it doesn't, the commander adds that box to the plan first and then starts. Live worker screens are mirrored into a split pane by <code>scripts/dev-view.sh</code> — it is a read-only mirror, so a viewer failure never blocks the delegation.</p>
 
-<h4>Where it stops</h4>
-<p>The context budget is measured against <b>the main session</b>. Once a single call reaches <b>12 delegated boxes</b> or <b>3 handled by main directly</b>, it updates and commits the plan, then stops and tells you. Pick it up on a fresh screen with <code>/dev-loop --resume &lt;plan path&gt;</code>.</p>
+<h4>Limits that keep runs from colliding</h4>
+<table>
+  <tr><th>Limit</th><th>What it means</th></tr>
+  <tr><td><b>One run per repository</b></td><td>If a run is already open on the same repository, a second start is refused. Different repositories run concurrently without limit</td></tr>
+  <tr><td><b>One channel slot per machine</b></td><td>Only one project machine-wide can hold channel mode. If the slot is taken, the start isn't blocked — it drops to screen mode</td></tr>
+  <tr><td><b>Three concurrent workers</b></td><td>The cap on worker sessions one commander runs at a time</td></tr>
+</table>
 
 <h4>What happens when something jams</h4>
 <ul>
-  <li><b>Delegation fails</b> (worktree refused, session never registers, no progress after a nudge) → retried once; if it still fails, main handles that one box directly (<code>/impl</code> for build work, <code>/dev</code> otherwise). Isolation is given up, progress isn't.</li>
-  <li><b>Merge conflict</b> → it stops and reports. Once you've resolved it, the loop resumes from that box's merge.</li>
-  <li><b>Cleanup</b> → before stopping or finishing, the sessions and workspaces created by this call are reviewed; merged ones are removed, and anything left uncommitted or unmerged is reported with its path and reason.</li>
+  <li><b>Delegation fails</b> (worktree refused, session never registers, no progress after a nudge) → retried once; if it still fails, <b>the commander</b> handles that one box directly (<code>/impl</code> for build work, <code>/dev</code> otherwise). Isolation is given up, progress isn't, and an incident line is recorded.</li>
+  <li><b>Merge conflict</b> → the commander tries to resolve it first, and hands it back to you only when it can't.</li>
+  <li><b>Cleanup</b> → before finishing, the sessions and workspaces created by this run are reviewed; merged ones are removed, and anything left uncommitted or unmerged is reported with its path and reason.</li>
 </ul>
 <h3>/impl — the workflow adapts automatically to the size of the work</h3>
 <p>impl first judges the <b>scale</b> of the request, then picks an agent setup to match. It won't wrap a tiny change in heavy process, and it layers design and verification thickly onto big ones.</p>
@@ -228,7 +283,7 @@ N2 experiment┘        ↑
 <table>
   <tr><th>Skill</th><th>Role</th><th>Origin</th></tr>
   <tr><td><code>dev</code></td><td>Build the work flowchart and orchestrate task-by-task execution</td><td><span class="badge b-own">original</span></td></tr>
-  <tr><td><code>dev-loop</code></td><td>Auto-repeat and parallelize the execution loop by delegating each box to its own session</td><td><span class="badge b-own">original</span></td></tr>
+  <tr><td><code>dev-loop</code></td><td>Auto-repeat and parallelize the execution loop across three session tiers — front desk, commander, worker. Runs to completion with no context ceiling, and several projects run concurrently on one machine</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>impl</code></td><td>Feature/refactor orchestration</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>adr</code></td><td>Architecture decision records</td><td><span class="badge b-own">original</span></td></tr>
   <tr><td><code>tdd-workflow</code></td><td>Enforce TDD (unit/integration/E2E coverage)</td><td><span class="badge b-ecc">everything-claude-code</span></td></tr>
@@ -340,12 +395,17 @@ CLAUDE.md . Then walk me through the "Required settings" section.</code></pre>
 <ul>
   <li><code>CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS</code> — <b>Required.</b> Without this flag, <b>nested sub-spawning</b> (a sub-agent spawning yet another sub-agent) is impossible. <code>/impl</code>'s agent chain and <code>synthesizer</code>'s architect·critic convergence only work on top of it, so those steps fail when it's off.</li>
   <li><code>worktree.baseRef</code> — <b>Required.</b> The base commit used when impl's parallel tracks create isolated workspaces (worktrees).</li>
-  <li><code>statusLine</code> — <b>Required if you use the <code>/dev</code> family.</b> Not decoration but <b>instrumentation</b>. A session's only source for measuring its own context is <code>~/.claude/status/&lt;session-id&gt;.json</code>, and that file is written by <b>your status line command</b>, not by Claude. Without it a session can't see itself fill up, and it misses the point where it should stop and hand off.</li>
+  <li><code>statusLine</code> — <b>Required if you use the <code>/dev</code> family.</b> Not decoration but <b>instrumentation</b>. A session's only source for measuring its own context is <code>~/.claude/status/&lt;session-id&gt;.json</code>, and that file is written by <b>your status line command</b>, not by Claude. Without it a session can't see itself fill up, and it misses the point where it should stop and hand off. For <code>/dev-loop</code> it matters even more — the front desk reads <b>the commander's</b> copy of that file to decide when to swap it out, so without it the swap decision never forms and the unattended run can't complete.</li>
 </ul>
 <div class="note"><b>Already running your own status line?</b> · <b>Don't overwrite it</b> with the command above. Use <b>method ②</b> described in the header of <code>scripts/status-writer.py</code>: four lines at the very top of your existing script (before it reads stdin). It reads stdin on your script's behalf, records it, and puts it back, so your status line keeps working as before.</div>
 
-<h3>Optional setup — tmux</h3>
-<p><code>/dev-loop</code> launches a worker session per box through tmux. Without <code>tmux</code> it stops at the pre-spawn check. <code>/dev</code> and <code>/impl</code> on their own don't need it.</p>
+<h3>Required setup — if you use /dev-loop</h3>
+<ul>
+  <li><b>tmux</b> — both the commander and the worker sessions run on tmux. Without it no session comes up. <code>/dev</code> and <code>/impl</code> on their own don't need it.</li>
+  <li><b>jq</b> — used to tally the incident records unattended runs leave behind (<code>scripts/dl-incident.sh</code>). Without it only that tally comes back empty; the loop still runs.</li>
+  <li><b>Accept the project trust prompt</b> — an unattended session cannot get past the "do you trust this folder?" dialog Claude Code shows on first run. <code>/dev-loop</code> checks for that acceptance before spawning and hands back to you rather than spawning without it. <b>Run <code>claude</code> once in the target project yourself and accept.</b></li>
+</ul>
+<div class="note"><b>Channel mode is not in this distribution</b> · <code>/dev-loop</code> can normally report and take instructions over Telegram, but that transport is a fork of someone else's plugin and is not shipped here. After installing it <b>always runs in screen mode</b>, printing one warning to that effect at every startup — which is expected.</div>
 
 <footer>
   <p><b>Credits</b></p>
