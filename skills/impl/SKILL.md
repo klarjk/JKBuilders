@@ -97,7 +97,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 2. 아래 표로 크기·체인·`cycle_max` 분류.
 3. **크기=중이면 아래 "검증 단계 유무 판정"을 수행한다.** 검증 없음으로 판정되면 곧장 "중 경량 경로"로 분기한다(4·5번 미실행).
 4. **크기=소면 곧장 아래 "소 빠른 경로"로 분기한다 — 5·6번(워크스페이스·state.json 생성)을 실행하지 않는다.**
-5. (중-검증·대) 사용자에 한 줄 보고 ("크기 중. planner → tdd-guide → code-reviewer → e2e, cycle_max=5, isolation=worktree"). 워크스페이스 생성, `01_intent.md` Write (요청 원문 + 크기 + 근거 3줄). **사용자(또는 상위 `/dev`)가 성공 조건을 제시했으면 `01_intent.md`에 `## 사용자 성공 조건` 섹션으로 각 항목을 원문 그대로 기록한다(제시 안 했으면 섹션 생략).** 이 섹션이 있으면 아래 1단계 planner·7단계 evaluator·e2e 위임 프롬프트에 반드시 실려 여정 커버리지로 이어진다 — 성공 조건 관통은 planner·evaluator·e2e가 존재하는 중-검증·대 경로에만 적용된다.
+5. (중-검증·대) 사용자에 한 줄 보고 ("크기 중. planner → tdd-guide → code-reviewer → e2e, cycle_max=5, isolation=worktree"). 워크스페이스 생성, `01_intent.md` Write (요청 원문 + 크기 + 근거 3줄). **사용자(또는 상위 `/dev`)가 성공 조건을 제시했으면 `01_intent.md`에 `## 사용자 성공 조건` 섹션으로 각 항목을 원문 그대로 기록한다(제시 안 했으면 섹션 생략).** **상위 계획서의 `## 의도`·`## 사용자 여정` 절을 읽으라는 지시를 받았으면 두 절을 `01_intent.md`에 같은 섹션명으로 원문 그대로 옮긴다 — 여정 표의 행을 합치거나 ID를 바꾸지 않는다. 계획서의 `## 성공 조건`은 `## 사용자 성공 조건` 섹션명으로 옮긴다.** 이 섹션이 있으면 아래 1단계 planner·7단계 evaluator·e2e 위임 프롬프트에 반드시 실려 여정 커버리지로 이어진다 — 성공 조건 관통은 planner·evaluator·e2e가 존재하는 중-검증·대 경로에만 적용된다.
 6. (중-검증·대) state.json 초기화.
 
 | 크기 | 기준 | 체인 | cycle_max |
@@ -154,6 +154,8 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 
 크기=대이고 ① 요청에 사용자 대상·성공 기준이 명시 안 됐거나 ② 코드베이스에 해당 기능 관련 파일이 없으면(신규 제품·기능) 구현 전에 PRD를 먼저 만든다. 둘 다 아니면(기존 모듈 확장·리팩토링) 건너뛴다.
 
+**상위 계획서의 `## 의도` 절을 읽으라는 지시와 함께 위임받았으면 본 게이트를 수행하지 않고 설계 단계부터 진행한다** — 같은 문답을 상위에서 이미 마쳤다. 계획서 절의 `01_intent.md` 이관은 0단계 5번이 담당한다.
+
 1. 사용자에 "신규 기능이라 PRD부터 만들까요? (작성 후 세션 종료, 새 세션 `--resume`으로 구현 재개)" 1줄 질문 후 답 대기.
 2. 동의 시: (0단계에서 이미 생성된) state.json을 `phase=prd_pending`으로 갱신 → `/prp-prd`를 Skill로 실행하되 args에 "산출물을 `<워크스페이스 절대경로>/00_prd.md`에 저장"을 명시 → 완료 후 "PRD 작성 완료. 새 세션에서 `/impl --resume <워크스페이스 절대경로>`로 구현을 시작합니다" 안내 후 **종료**한다.
 
@@ -181,7 +183,7 @@ PRD 완료 안내 후 세션을 종료한다. 같은 세션에서 설계(archite
 
 크기=대면 위임 프롬프트에 `ultra`를 포함하고, **planner를 반드시 `name`을 붙여 스폰한다**(예: `name="impl-planner"`) — 이름 없는 planner는 ultra의 plan-reviewer 비평 3건을 회수하지 못한다. 중은 ultra 미적용이라 `name` 불필요. 설계 단계(architect/synthesizer) 선행 스폰은 0단계 참조.
 
-1. planner 스폰, `03_plan.md` Write + 트랙 분할 결정 요청. `track_id`(A·B…)는 planner가 정하고, planner가 직접 `instructions/<track_id>.md`를 Write한다. 메인은 경로를 미리 만들지 않는다. 위임 프롬프트에 ① `00_prd.md`가 있으면 Read 지시 ② 위 "테스트 tier 판정" 3-tier 기준을 주입하고, `test_tier="bdd"` 트랙의 `instructions/<id>.md`는 behavior(Given-When-Then) 시나리오마다 독립 선행 RED-GREEN 단계로 쪼개 작성하도록, `test_tier="tested"` 트랙은 구현 단계 뒤에 사후 테스트 단계(정상 경로 + 위험·경계)를 두도록, `test_tier="none"` 트랙은 테스트 단계 없이 구현 단계만 쓰도록 지시한다(planner 정의는 수정하지 않고 프롬프트로만 주입). **③ `01_intent.md`에 `## 사용자 성공 조건`이 있으면 각 항목을 `03_plan.md`의 Success Criteria 섹션(없으면 신설)에 원문 그대로 포함하고, 각 조건에 대응하는 사용자 여정을 Testing Strategy의 E2E 골격에 최소 1개씩 배치하도록 지시한다.** **④ `instructions/<id>.md`와 `03_plan.md`의 Success Criteria에 단위 트랙의 테스트 실행 범위를 적을 때는 변경 범위 테스트로 한정하도록 지시한다 — 전체 스위트는 5단계 통합, e2e는 7단계가 단독으로 수행한다.**
+1. planner 스폰, `03_plan.md` Write + 트랙 분할 결정 요청. `track_id`(A·B…)는 planner가 정하고, planner가 직접 `instructions/<track_id>.md`를 Write한다. 메인은 경로를 미리 만들지 않는다. 위임 프롬프트에 ① `00_prd.md`가 있으면 Read 지시 ② 위 "테스트 tier 판정" 3-tier 기준을 주입하고, `test_tier="bdd"` 트랙의 `instructions/<id>.md`는 behavior(Given-When-Then) 시나리오마다 독립 선행 RED-GREEN 단계로 쪼개 작성하도록, `test_tier="tested"` 트랙은 구현 단계 뒤에 사후 테스트 단계(정상 경로 + 위험·경계)를 두도록, `test_tier="none"` 트랙은 테스트 단계 없이 구현 단계만 쓰도록 지시한다(planner 정의는 수정하지 않고 프롬프트로만 주입). **③ `01_intent.md`에 `## 사용자 성공 조건`이 있으면 각 항목을 `03_plan.md`의 Success Criteria 섹션(없으면 신설)에 원문 그대로 포함하고, 각 조건에 대응하는 사용자 여정을 Testing Strategy의 E2E 골격에 최소 1개씩 배치하도록 지시한다. `01_intent.md`에 `## 사용자 여정`이 있으면 그 표의 여정을 E2E 골격의 기준으로 삼고 ID를 그대로 쓰도록, 코드에서 여정을 새로 도출하지 않도록 지시한다 — 표에 없는 여정이 필요하면 골격에 더하되 사유를 한 줄 적게 한다.** **④ `instructions/<id>.md`와 `03_plan.md`의 Success Criteria에 단위 트랙의 테스트 실행 범위를 적을 때는 변경 범위 테스트로 한정하도록 지시한다 — 전체 스위트는 5단계 통합, e2e는 7단계가 단독으로 수행한다.**
 
 > **Do:** 단위 트랙 완료 조건을 "변경 범위 테스트 통과"로 쓰게 한다
 > **Don't:** 완료 조건에 인자 없는 전체 실행("전량 통과")을 넣거나, e2e 실행 여부 판단을 트랙 지시문에 남긴다
@@ -226,14 +228,14 @@ tdd-guide 완료 트랙마다 code-reviewer 스폰. `needs_security_review: true
 
 ### 7단계 — evaluator + e2e 실행 (중·대만)
 
-**evaluator 스폰 (메인 직접)**: 머지·통합이 끝난 코드에서 evaluator(sonnet) 스폰. 위임 프롬프트에 머지 코드 범위 + `03_plan.md`의 E2E 골격 Read 지시. **`01_intent.md`에 `## 사용자 성공 조건`이 있으면 그 파일 Read 지시를 함께 넣고, 각 사용자 성공 조건을 검증하는 e2e 시나리오를 `09_e2e_strategy.md`에 반드시 하나 이상 포함하며 각 시나리오에 대응 성공 조건을 명시하도록 지시한다(어느 조건도 누락 금지).** evaluator는 e2e 세부 전략과 실행 에이전트용 스폰 지시문을 `09_e2e_strategy.md`에 Write한다. **메인은 이 파일 본문을 읽지 않고 경로째 e2e 에이전트에 전달한다.**
+**evaluator 스폰 (메인 직접)**: 머지·통합이 끝난 코드에서 evaluator(sonnet) 스폰. 위임 프롬프트에 머지 코드 범위 + `03_plan.md`의 E2E 골격 Read 지시. **`01_intent.md`에 `## 사용자 성공 조건`이 있으면 그 파일 Read 지시를 함께 넣고, 각 사용자 성공 조건을 검증하는 e2e 시나리오를 `09_e2e_strategy.md`에 반드시 하나 이상 포함하며 각 시나리오에 대응 성공 조건을 명시하도록 지시한다(어느 조건도 누락 금지). `01_intent.md`에 `## 사용자 여정`이 있으면 그 여정을 삭제·병합하지 말고 각 시나리오에 대응 여정 ID를 함께 적도록 지시한다.** evaluator는 e2e 세부 전략과 실행 에이전트용 스폰 지시문을 `09_e2e_strategy.md`에 Write한다. **메인은 이 파일 본문을 읽지 않고 경로째 e2e 에이전트에 전달한다.**
 
 **e2e 에이전트 결정 (스폰 전, 메인 직접)**: 프로젝트 루트 기준 `.claude/agents/`를 Glob(`e2e-*.md`)한다.
 - 1개 → 그 프로젝트 전용 e2e 에이전트를 스폰.
 - 0개 또는 `.claude/agents/` 디렉터리 자체가 없음 → 기본 `e2e-runner` 스폰.
 - 2개 이상 → 어느 것을 쓸지 사용자에 1줄 질문 후 답을 받을 때까지 대기.
 
-e2e 에이전트(전용·기본 `e2e-runner` 모두)는 impl 계약(state.json·state_delta·`05_e2e_report.md`·실패 분류)을 정의에 모를 수 있다. tdd-guide·code-reviewer와 동일하게 **어느 에이전트를 스폰하든 메인이 위임 프롬프트 템플릿으로 계약을 주입**한다 — 특히 아래 실패 분류 기준과 `state_delta` 첨부 지시, 그리고 `09_e2e_strategy.md`(evaluator가 작성한 전략·스폰 지시문) Read 지시를 프롬프트에 명시한다. **`01_intent.md`에 `## 사용자 성공 조건`이 있으면 그 각 조건을 반드시 검증 대상 시나리오로 포함하고 `05_e2e_report.md`에 성공 조건별 pass/fail을 개별 기록하도록 명시한다 — 조건이 fail하면 아래 실패 분류 기준(구현·계획·환경·복합)을 그대로 적용하며, 여러 조건이 서로 다른 원인으로 동시에 fail하면 '상위 원인 우선'(계획 > 구현)으로 `next_action` 하나에 수렴시키고 나머지 원인은 `notes`에 남기되, 환경 결함이 하나라도 섞이면 `abort`를 우선한다.**
+e2e 에이전트(전용·기본 `e2e-runner` 모두)는 impl 계약(state.json·state_delta·`05_e2e_report.md`·실패 분류)을 정의에 모를 수 있다. tdd-guide·code-reviewer와 동일하게 **어느 에이전트를 스폰하든 메인이 위임 프롬프트 템플릿으로 계약을 주입**한다 — 특히 아래 실패 분류 기준과 `state_delta` 첨부 지시, 그리고 `09_e2e_strategy.md`(evaluator가 작성한 전략·스폰 지시문) Read 지시를 프롬프트에 명시한다. **`01_intent.md`에 `## 사용자 성공 조건`이 있으면 그 각 조건을 반드시 검증 대상 시나리오로 포함하고 `05_e2e_report.md`에 성공 조건별 pass/fail을 개별 기록하도록 명시한다(`## 사용자 여정`이 있으면 여정 ID별로도 개별 기록) — 조건이 fail하면 아래 실패 분류 기준(구현·계획·환경·복합)을 그대로 적용하며, 여러 조건이 서로 다른 원인으로 동시에 fail하면 '상위 원인 우선'(계획 > 구현)으로 `next_action` 하나에 수렴시키고 나머지 원인은 `notes`에 남기되, 환경 결함이 하나라도 섞이면 `abort`를 우선한다.**
 
 선택된 e2e 에이전트는 실패 원인을 아래 기준으로 분류해 `state_delta.next_action`에 기록한다.
 - 구현 결함(어서션 실패·로직 오류) → `respawn:tdd-guide`(단위 결함) 또는 `respawn:tdd-guide-integration`(통합·결합부 결함)

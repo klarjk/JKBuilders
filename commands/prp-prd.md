@@ -7,6 +7,8 @@ argument-hint: "[feature/product idea] (blank = start with questions)"
 
 > Wirasm의 PRPs-agentic-eng에서 차용. PRP 워크플로우 시리즈의 일부.
 
+`/dev` 개발 워크플로우 안에서는 계획 세션의 "의도 인터뷰"가 정본이다. 본 문서는 `/dev`를 거치지 않는 단독 기획과 `/impl`의 PRD 게이트에서만 쓴다.
+
 **Input**: $ARGUMENTS
 
 ---
