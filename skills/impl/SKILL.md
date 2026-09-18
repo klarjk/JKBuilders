@@ -20,7 +20,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 
 ## 재진입 (`--resume <워크스페이스 절대경로>`, 메인 직접)
 
-`--resume`은 **중(검증 있음)·대 전용**이다 — 소·중(검증 없음)은 state.json·워크스페이스가 없어 재진입 대상이 되지 않는다. `--resume <경로>`로 호출됐는데 그 경로에 state.json이 없으면 "상태 머신 없는 경로(소·중 검증 없음)는 재진입 불가. 신규로 실행합니다" 1줄 보고 후 신규 진입 절차를 따른다. state.json이 있으면 신규 진입 대신 재개한다 — 해당 경로의 state.json을 읽어 `phase`부터 이어간다 — `prd_pending`이고 `00_prd.md`가 있으면 PRD 게이트를 건너뛰고 설계 단계(대: state.json `design_agent`가 가리키는 architect 또는 synthesizer)·planner(중)부터 스폰한다. `prd_pending`인데 `00_prd.md`가 없으면(작성 중 중단) 사용자에 "PRD 미완성. 다시 작성할까요?" 1줄 질문 후 답 대기 → 동의 시 0.5단계 2번(prp-prd 실행)부터 재개. 0단계 크기 판단·워크스페이스 생성은 어느 경우든 다시 하지 않는다.
+`--resume`은 **중(검증 있음)·대 전용**이다 — 소·중(검증 없음)은 state.json·워크스페이스가 없어 재진입 대상이 되지 않는다. `--resume <경로>`로 호출됐는데 그 경로에 state.json이 없으면 "상태 머신 없는 경로(소·중 검증 없음)는 재진입 불가. 신규로 실행합니다" 1줄 보고 후 신규 진입 절차를 따른다. state.json이 있으면 신규 진입 대신 재개한다 — 해당 경로의 state.json을 읽어 `phase`부터 이어간다 — `prd_pending`이고 `00_prd.md`가 있으면 PRD 게이트를 건너뛰고 설계 단계(대: state.json `design_agent`가 가리키는 architect 또는 synthesizer)·planner(중)부터 스폰한다. `prd_pending`인데 `00_prd.md`가 없으면(작성 중 중단) 사용자에 "PRD 미완성. 다시 작성할까요?" 1줄 질문 후 답 대기 → 동의 시 0.5단계 2번(prp-prd 실행)부터 재개. 0단계 크기 판단·워크스페이스 생성은 어느 경우든 다시 하지 않는다. **단 조사 브리핑은 예외로, `design_agent=architect`로 재개하면 architect 스폰 직전에 0단계 「설계 단계 스폰 전 조사 브리핑」을 수행한다** — 재개 세션은 이전 조사 컨텍스트가 없어 브리핑 효용이 더 크다(`01a_survey.md`가 이미 있으면 그대로 재사용).
 
 ## 사전 점검 (0단계 직후, 중(검증 있음)·대만, 메인 직접)
 
@@ -36,6 +36,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 ├── state.json
 ├── 00_prd.md
 ├── 01_intent.md
+├── 01a_survey.md
 ├── 02_architect.md
 ├── 03_plan.md
 ├── instructions/<track_id>.md
@@ -74,6 +75,7 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
   "artifacts": {
     "prd": "00_prd.md",
     "intent": "01_intent.md",
+    "survey": "01a_survey.md",
     "architect": "02_architect.md",
     "plan": "03_plan.md",
     "impl": "04_impl_handoff.md",
@@ -121,7 +123,12 @@ state.json은 **메인만** 쓴다. 서브에이전트는 5문장 이내 보고 
 **Do:** ②는 단위·통합 테스트로 검증 가능해도 *e2e*가 불가능하면 검증 없음으로 본다(tdd-guide 단위·통합 테스트는 두 경로 모두 수행).
 **Don't:** 사용자 발화·코드베이스 근거 없이 임의로 검증을 생략한다 — 근거가 없으면 검증 있음(정식 경로)이 기본이다.
 
-**대의 설계 단계는 변경 범위로 갈린다** — 신규 첫 구현이거나 모듈 경계·데이터 모델·외부 인터페이스가 두루 바뀌면 synthesizer를, 기존 모듈 내부 구조만 바뀌면 architect를 스폰하고, 그 분기 결과를 state.json `design_agent`에 기록한다. **요청에 확정 ADR/설계 문서 경로가 명시돼 있으면 설계 단계(architect/synthesizer)를 스폰하지 않고 그 문서를 `02_architect.md`로 채택(복사 또는 경로 참조)한 뒤 planner부터 시작한다.** synthesizer는 ADR을 본문 반환이 기본이므로, 위임 프롬프트에 최종 ADR을 `02_architect.md`에 Write하도록 명시한다. **synthesizer는 반드시 `name`을 붙여 스폰한다**(예: `name="impl-synth"`) — 이름 없는 부모는 자식(architect·critic) 산출을 회수하지 못한다. **대의 planner는 항상 ultra 모드**(위임 프롬프트에 `ultra` 포함)로 스폰해 plan-reviewer 3 분담 자가 비평을 활성화한다(중은 미적용).
+**대의 설계 단계는 변경 범위로 갈린다** — 신규 첫 구현이거나 모듈 경계·데이터 모델·외부 인터페이스가 두루 바뀌면 synthesizer를, 기존 모듈 내부 구조만 바뀌면 architect를 스폰하고, 그 분기 결과를 state.json `design_agent`에 기록한다. **요청에 확정 ADR/설계 문서 경로가 명시돼 있으면 설계 단계(architect/synthesizer)를 스폰하지 않고 그 문서를 `02_architect.md`로 채택(복사 또는 경로 참조)한 뒤 planner부터 시작한다.** synthesizer는 ADR을 본문 반환이 기본이므로, 위임 프롬프트에 최종 ADR을 `02_architect.md`에 Write하도록 명시한다. **synthesizer에 `name`을 주지 않는다** — 이름을 붙이면 산출이 호출자를 건너뛰어 유실된다. **대의 planner는 항상 ultra 모드**(위임 프롬프트에 `ultra` 포함)로 스폰해 plan-reviewer 3 분담 자가 비평을 활성화한다(중은 미적용).
+
+**설계 단계 스폰 전 조사 브리핑 (대만, 메인 직접)** — `design_agent=architect`이면 메인이 먼저 `Explore` 2~3개를 **한 응답에 묶어 병렬 스폰**해(축: 현재 구조·모듈 경계 / 기존 패턴·유사 구현 / 제약·한계) 회수 결과를 `01a_survey.md`로 Write하고, 그 경로를 architect 위임 프롬프트의 Read 지시에 넣는다. 조사 축이 1개뿐이면 스폰하지 않고 건너뛴다. **`design_agent=synthesizer`이면 메인은 만들지 않는다** — synthesizer가 자체 fan-out으로 브리핑을 만드므로 중복이다. 확정 ADR 경로가 주어져 설계 단계를 건너뛰는 경우에도 만들지 않는다.
+
+> **Do:** architect 경로에서만 메인이 조사를 흩고, 그 산출을 파일 경로로 넘긴다
+> **Don't:** synthesizer 경로에서 메인이 조사를 또 돌리거나, 조사 본문을 위임 프롬프트에 박는다
 
 크기가 모호하면 큰 쪽으로 분류.
 
@@ -181,7 +188,7 @@ PRD 완료 안내 후 세션을 종료한다. 같은 세션에서 설계(archite
 
 ### 1단계 — planner (중·대만)
 
-크기=대면 위임 프롬프트에 `ultra`를 포함하고, **planner를 반드시 `name`을 붙여 스폰한다**(예: `name="impl-planner"`) — 이름 없는 planner는 ultra의 plan-reviewer 비평 3건을 회수하지 못한다. 중은 ultra 미적용이라 `name` 불필요. 설계 단계(architect/synthesizer) 선행 스폰은 0단계 참조.
+크기=대면 위임 프롬프트에 `ultra`를 포함한다. **planner에 `name`을 주지 않는다** — 이름을 붙이면 계획서가 호출자를 건너뛰어 유실된다. 설계 단계(architect/synthesizer) 선행 스폰은 0단계 참조.
 
 1. planner 스폰, `03_plan.md` Write + 트랙 분할 결정 요청. `track_id`(A·B…)는 planner가 정하고, planner가 직접 `instructions/<track_id>.md`를 Write한다. 메인은 경로를 미리 만들지 않는다. 위임 프롬프트에 ① `00_prd.md`가 있으면 Read 지시 ② 위 "테스트 tier 판정" 3-tier 기준을 주입하고, `test_tier="bdd"` 트랙의 `instructions/<id>.md`는 behavior(Given-When-Then) 시나리오마다 독립 선행 RED-GREEN 단계로 쪼개 작성하도록, `test_tier="tested"` 트랙은 구현 단계 뒤에 사후 테스트 단계(정상 경로 + 위험·경계)를 두도록, `test_tier="none"` 트랙은 테스트 단계 없이 구현 단계만 쓰도록 지시한다(planner 정의는 수정하지 않고 프롬프트로만 주입). **③ `01_intent.md`에 `## 사용자 성공 조건`이 있으면 각 항목을 `03_plan.md`의 Success Criteria 섹션(없으면 신설)에 원문 그대로 포함하고, 각 조건에 대응하는 사용자 여정을 Testing Strategy의 E2E 골격에 최소 1개씩 배치하도록 지시한다. `01_intent.md`에 `## 사용자 여정`이 있으면 그 표의 여정을 E2E 골격의 기준으로 삼고 ID를 그대로 쓰도록, 코드에서 여정을 새로 도출하지 않도록 지시한다 — 표에 없는 여정이 필요하면 골격에 더하되 사유를 한 줄 적게 한다.** **④ `instructions/<id>.md`와 `03_plan.md`의 Success Criteria에 단위 트랙의 테스트 실행 범위를 적을 때는 변경 범위 테스트로 한정하도록 지시한다 — 전체 스위트는 5단계 통합, e2e는 7단계가 단독으로 수행한다.**
 
@@ -272,6 +279,7 @@ e2e 에이전트(전용·기본 `e2e-runner` 모두)는 impl 계약(state.json·
 - state.json
 - 00_prd.md (있으면 — architect·planner 스폰 시)
 - 01_intent.md
+- 01a_survey.md (있으면 — 설계 단계 스폰 시)
 - <이전 단계 산출물> (있으면)
 - <트랙 지시문 instructions/<id>.md> (단위 tdd-guide 스폰 시)
 - 03_plan.md Testing Strategy (통합 tdd-guide는 통합 설계도, evaluator는 E2E 골격 Read)
@@ -288,6 +296,7 @@ e2e 에이전트(전용·기본 `e2e-runner` 모두)는 impl 계약(state.json·
 [공통 룰]
 - 보고 분량 ≤ 200줄·표 ≤ 2개. 초과 시 _workspace/에 파일 저장 후 절대경로만 회신.
 - 위임 cwd 외부에 파일 쓰기·커밋 금지. 외부 경로 읽기는 절대경로 Read 또는 `git -C <path>` 읽기 전용만.
+- `cd <폴더> && <명령> <상대경로>` 꼴 두 토막 셸 명령 금지. 절대경로 한 토막 또는 전용 도구(Read·Grep·Glob)로 대신한다 — 두 토막은 읽을 파일이 확정되지 않아 승인 대기로 넘어가고 무인 세션이 멈춘다.
 - 룰북·docs 등 큰 지시문 파일은 `Read offset/limit`로 좁힘.
 ```
 
@@ -298,8 +307,9 @@ e2e 에이전트(전용·기본 `e2e-runner` 모두)는 impl 계약(state.json·
 | 단계 | 산출 파일 | 핵심 섹션 |
 |------|----------|----------|
 | prp-prd (대+신규, 게이트) | 00_prd.md | Problem, Hypothesis, Out of Scope, Success Metrics, Phases |
+| 조사 fan-out (대, 설계 전) | 01a_survey.md | 현재 구조, 기존 패턴·유사 구현, 제약·한계 |
 | architect / synthesizer (대, 변경 범위 분기) | 02_architect.md | ADR, 데이터 모델, 인터페이스 계약 |
-| planner | 03_plan.md + instructions/*.md | Mandatory Reading, Patterns to Mirror, Step-by-Step, Confidence Score, (사용자 성공 조건 있으면) Success Criteria / 트랙별 모델·지시문 / Testing Strategy(통합 설계도·E2E 골격 — 성공 조건별 여정 포함) |
+| planner | 03_plan.md + instructions/*.md | Mandatory Reading, Patterns to Mirror, Step-by-Step, Confidence Score, 참조 파일·심볼, (사용자 성공 조건 있으면) Success Criteria / 트랙별 모델·지시문 / Testing Strategy(통합 설계도·E2E 골격 — 성공 조건별 여정 포함) |
 | tdd-guide (단위) | 04_impl_handoff.md | RED-GREEN 로그, 커밋 SHA, 테스트한 경로(핵심 여정·경계), 발견 사항 |
 | tdd-guide (통합) | 08_integration_handoff.md | 통합 테스트, 결합부 구현, 최종 회귀, (충돌 시) 해소 로그 |
 | code-reviewer | 06_review_<track_id>.md | 결함 목록, 처분 권고 |

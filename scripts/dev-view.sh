@@ -5,6 +5,10 @@
 #   dev-view.sh                 도는 dev-* 세션을 모두 비추고 창을 띄운다 (프로젝트 무관)
 #   dev-view.sh --sync          창은 띄우지 않고 pane 구성만 맞춘다
 #   dev-view.sh --close         뷰어 세션을 종료한다 (도는 작업 세션이 없을 때만)
+#   dev-view.sh --solo SESSION  그 작업 세션에 직접 붙는(입력 가능한) 단독 창을 띄운다
+#                               미러와 달리 attach이므로 승인·선택지에 사람이 답할 수 있다
+#   dev-view.sh --solo-active   같되 대상을 뷰어의 활성 칸에서 읽는다 (바인딩 전용)
+#                               뷰어 칸을 더블클릭하면 이쪽이 불린다
 #   dev-view.sh --name N3 [DIR] 노드 N3용 작업 세션명을 출력한다 (DIR 생략 시 현재 위치)
 #                               저장소 밖에서 부를 때는 DIR에 저장소 경로를 넘긴다
 #   dev-view.sh --peer-name DIR [REPO] 이 프로젝트에서 DIR로 거는 협업 세션명을 출력한다
@@ -34,6 +38,10 @@ INTERVAL="${DEV_VIEW_INTERVAL:-1}"
 TERM_APP="${DEV_VIEW_TERM:-auto}"
 WIN_COLS="${DEV_VIEW_COLS:-180}"
 WIN_ROWS="${DEV_VIEW_ROWS:-48}"
+
+# tmux 3.7b의 기본 DoubleClick1Pane 동작(단어 선택·복사). 뷰어 바인딩이 이 키를 차지하므로
+# 뷰어가 아닌 칸과 --close 뒤에는 이것으로 되돌린다. tmux를 올려 기본값이 바뀌면 함께 맞춘다.
+DEFAULT_DBLCLICK='select-pane -t = ; if-shell -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send-keys -M } { copy-mode -H ; send-keys -X select-word ; run-shell -d 0.3 ; send-keys -X copy-pipe-and-cancel }'
 
 # 뷰어 세션명(DEV_VIEW_SESSION)은 tmux 명령 문자열·AppleScript 소스에 삽입되므로
 # 영숫자·`_`·`-`로 제한한다. 미러 대상 세션명은 tmux가 준 값이라 이 검사를 거치지 않는다.
@@ -85,6 +93,42 @@ mirror_cmd() {
   printf '%q %q %q %q' "$(command -v python3)" "$MIRROR" "$1" "$INTERVAL"
 }
 
+# 터미널 앱 새 창을 열어 주어진 tmux 세션에 attach한다.
+# $1 대상 세션명 · $2 cols · $3 rows.
+# DEV_VIEW_TERM이 iterm·terminal 중 하나가 아니면(none과 오타를 함께) 창을 띄우지 않고 1을 돌려준다.
+open_term_window() {
+  local target="$1" cols="$2" rows="$3" app tmux_bin
+  app="$TERM_APP"
+  if [ "$app" = "auto" ]; then
+    if [ -d /Applications/iTerm.app ]; then app=iterm; else app=terminal; fi
+  fi
+  tmux_bin="$(command -v tmux)"
+  case "$app" in
+    iterm)
+      osascript -e 'tell application "iTerm"
+        set w to (create window with default profile command "'"$tmux_bin"' attach -t '"$target"'")
+        tell current session of w
+          set columns to '"$cols"'
+          set rows to '"$rows"'
+        end tell
+        activate
+      end tell' >/dev/null
+      ;;
+    terminal)
+      osascript -e 'tell application "Terminal"
+        do script "'"$tmux_bin"' attach -t '"$target"'"
+        set number of columns of window 1 to '"$cols"'
+        set number of rows of window 1 to '"$rows"'
+        activate
+      end tell' >/dev/null
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
 # ---------------------------------------------------------------- 미러 모드
 # 뷰어 pane 안에서 자기 자신이 이 모드로 실행된다.
 if [ "${1:-}" = "--mirror" ]; then
@@ -134,6 +178,47 @@ if [ "${1:-}" = "--peer-name" ]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------- 단독 창 모드
+# 미러가 아니라 그 작업 세션에 직접 붙는 창을 띄운다 — 승인·선택지에 사람이 답하는 자리다.
+# 뷰어 세션은 건드리지 않으므로 DEV_VIEW_SESSION 검사보다 앞에 둔다.
+if [ "${1:-}" = "--solo" ] || [ "${1:-}" = "--solo-active" ]; then
+  if [ "${1:-}" = "--solo-active" ]; then
+    # 바인딩이 부르는 자리. 세션명을 인자로 받지 않고 뷰어의 활성 칸 이름표에서 직접 읽는다 —
+    # 바인딩 문자열에 #{pane_title}을 실으면 run-shell이 클릭된 칸이 아니라
+    # 자기 기본 타겟으로 다시 확장해 엉뚱한 값(호스트명)이 넘어간다.
+    solo="$(tmux display-message -p -t "=$VIEW_SESSION:" '#{pane_title}' 2>/dev/null)"
+  else
+    solo="${2:-}"
+  fi
+  # 세션명이 AppleScript 소스에 그대로 삽입되므로 뷰어 세션명과 같은 제한을 건다.
+  if ! valid_name "$solo"; then
+    echo "붙을 세션 이름이 비었거나 쓸 수 없는 문자가 있습니다: ${solo:-(빈 이름)}" >&2
+    exit 2
+  fi
+  if ! tmux has-session -t "=$solo" 2>/dev/null; then
+    echo "붙을 세션이 없습니다: $solo" >&2
+    # 바인딩으로 불리면 위 출력이 버려진다. run-shell -b에는 붙은 클라이언트가 없어
+    # 대상 없는 display-message가 조용히 사라지므로, 뷰어에 붙은 클라이언트마다 지정해 띄운다.
+    if [ "${1:-}" = "--solo-active" ]; then
+      tmux list-clients -t "=$VIEW_SESSION" -F '#{client_name}' 2>/dev/null | while IFS= read -r c; do
+        tmux display-message -c "$c" "끝난 작업이라 붙을 세션이 없습니다: $solo" 2>/dev/null
+      done
+    fi
+    exit 2
+  fi
+  # 이미 붙은 창이 있으면 새로 열지 않는다. 창을 둘 열어도 크기만 더 작은 쪽으로 묶인다.
+  if [ -n "$(tmux list-clients -t "=$solo" 2>/dev/null)" ]; then
+    echo "이미 붙어 있는 창이 있습니다: $solo"
+    exit 0
+  fi
+  if open_term_window "$solo" "$WIN_COLS" "$WIN_ROWS"; then
+    echo "단독 창을 띄웠습니다: $solo — 입력이 들어갑니다. 답한 뒤 창을 닫으십시오"
+  else
+    echo "창 없이 종료. 직접 붙으려면: tmux attach -t $solo"
+  fi
+  exit 0
+fi
+
 if ! valid_name "$VIEW_SESSION"; then
   echo "DEV_VIEW_SESSION은 영문·숫자·_·-만 쓸 수 있습니다: $VIEW_SESSION" >&2
   exit 2
@@ -159,6 +244,10 @@ if [ "${1:-}" = "--close" ]; then
     echo "도는 작업 세션이 있어 뷰어를 닫지 않습니다: $(printf '%s' "$remaining" | tr '\n' ' ')" >&2
     exit 1
   fi
+  # 뷰어를 닫으면 자기가 차지한 더블클릭을 tmux 기본 동작으로 되돌린다.
+  # unbind로 지우면 모든 세션에서 더블클릭 단어 선택이 사라진다.
+  tmux bind-key -T root DoubleClick1Pane "$DEFAULT_DBLCLICK" 2>/dev/null
+  tmux unbind-key -T root M-DoubleClick1Pane 2>/dev/null
   tmux kill-session -t "=$VIEW_SESSION" 2>/dev/null && echo "뷰어 세션 종료: $VIEW_SESSION" || echo "뷰어 세션 없음"
   exit 0
 fi
@@ -223,6 +312,19 @@ fi
 # 뷰어 표식. 예전 이름으로 떠 있던 뷰어에도 매번 다시 달아 둔다.
 tmux set-option -t "=$VIEW_SESSION:" @dev-view 1 >/dev/null 2>&1
 
+# 칸을 더블클릭하면 그 작업 세션에 직접 붙는 단독 창이 뜬다(--solo).
+# Option·Ctrl 조합은 쓰지 않는다 — iTerm은 Option을 누른 동안 마우스 보고를 꺼 tmux에 닿지 않고,
+# Ctrl+클릭은 기본값에서 우클릭 메뉴가 먹는다. 뷰어 칸은 읽기 전용 미러라 단어 선택을 잃어도 무방하다.
+# 키 바인딩은 tmux 서버 전역이므로 위 @dev-view 표식으로 갈라, 다른 세션에서는 기본 동작을 그대로 돈다.
+# select-pane을 먼저 걸어야 --solo-active가 읽는 활성 칸이 방금 클릭한 칸이 된다.
+# 옛 판이 걸어 둔 Option+더블클릭 바인딩은 떠 있는 서버에 남아 있으므로 여기서 거둔다.
+# run-shell은 명령 출력과 0이 아닌 종료코드("returned 2")를 클릭한 칸에 보기 모드로 덮어
+# 미러를 멈추므로, 출력을 버리고 `; true`로 끝낸다 — 실패 안내는 --solo-active가 직접 띄운다.
+tmux unbind-key -T root M-DoubleClick1Pane 2>/dev/null
+tmux bind-key -T root DoubleClick1Pane if-shell -F -t = '#{@dev-view}' \
+  "select-pane -t = ; run-shell -b 'DEV_VIEW_SESSION=$VIEW_SESSION $SELF --solo-active >/dev/null 2>&1; true'" \
+  "$DEFAULT_DBLCLICK" >/dev/null 2>&1
+
 # 사라진 대상의 pane 제거 (pane이 2개 이상일 때만 — 마지막 하나는 남긴다)
 tmux list-panes -t "=$VIEW_SESSION:" -F '#{pane_title}' 2>/dev/null | while IFS= read -r s; do
   [ -z "$s" ] && continue
@@ -258,36 +360,8 @@ if [ -n "$(tmux list-clients -t "=$VIEW_SESSION" 2>/dev/null)" ]; then
   exit 0
 fi
 
-app="$TERM_APP"
-if [ "$app" = "auto" ]; then
-  if [ -d /Applications/iTerm.app ]; then app=iterm; else app=terminal; fi
+if open_term_window "$VIEW_SESSION" "$WIN_COLS" "$WIN_ROWS"; then
+  echo "뷰어 창을 띄웠습니다: $VIEW_SESSION ($(printf '%s\n' "$targets" | grep -c '')개 세션)"
+else
+  echo "창 없이 구성만 완료. 직접 붙으려면: tmux attach -t $VIEW_SESSION"
 fi
-
-TMUX_BIN="$(command -v tmux)"
-
-case "$app" in
-  iterm)
-    osascript -e 'tell application "iTerm"
-      set w to (create window with default profile command "'"$TMUX_BIN"' attach -t '"$VIEW_SESSION"'")
-      tell current session of w
-        set columns to '"$WIN_COLS"'
-        set rows to '"$WIN_ROWS"'
-      end tell
-      activate
-    end tell' >/dev/null
-    ;;
-  terminal)
-    osascript -e 'tell application "Terminal"
-      do script "'"$TMUX_BIN"' attach -t '"$VIEW_SESSION"'"
-      set number of columns of window 1 to '"$WIN_COLS"'
-      set number of rows of window 1 to '"$WIN_ROWS"'
-      activate
-    end tell' >/dev/null
-    ;;
-  none)
-    echo "창 없이 구성만 완료. 직접 붙으려면: tmux attach -t $VIEW_SESSION"
-    exit 0
-    ;;
-esac
-
-echo "뷰어 창을 띄웠습니다: $VIEW_SESSION ($(printf '%s\n' "$targets" | grep -c '')개 세션)"
