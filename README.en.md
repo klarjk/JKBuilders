@@ -8,15 +8,13 @@
 
 ## What is this?
 
-A collection of **workflow tools** for building software in Claude Code. Planning development, making design decisions, and implementing/testing/reviewing code are split across specialist agents and skills. A single command (`/dev-loop`, `/impl`, `/prp-plan`, etc.) sets the relevant agents collaborating automatically behind the scenes.
+A collection of **workflow tools** for building software in Claude Code. Planning development, making design decisions, and implementing/testing/reviewing code are split across specialist agents and skills. A single command (`/dev`, `/impl`, `/prp-plan`, etc.) sets the relevant agents collaborating automatically behind the scenes.
 
 Multi-session development doesn't line the work up as a single sequence — it lays it out as a **work flowchart**. Each task is one box, connected by "what has to finish before this can start", so whatever can run at once does, and points where the result changes the path are handled as branches.
 
-`/dev-loop` goes one step further. **It hands each box of the flowchart to a separate Claude session** working in its own isolated worktree, and repeats that delegation until the plan is done. Only irreversible operations and design choices a human has to make stay on your screen.
+Implementation boxes that run in parallel are each handed to **their own isolated worktree and a separate Claude session**. The running sessions can be mirrored side by side in one window, and you can double-click a box that needs an answer to step straight in.
 
-The sessions come in three tiers: the **front desk** you sit in front of, the **commander** that reads the plan and hands out boxes, and the **worker** sessions that each take one box. The front desk watches how much of its context the commander has burned and swaps in a fresh commander before it fills up, so a long plan never stalls on a context limit. Each project gets its own front desk, so **one machine can run several repositories at once**.
-
-You can cut in at any time with `Esc` to change direction, and that reminder is printed on every watch round.
+Inside tmux, add `--auto` and a stop condition (a time or a box to reach) to turn on **auto-continue**. It gathers every question only a human can answer up front in the first round, then keeps chaining fresh rounds on its own each time the context fills, until the stop condition. Choices met along the way are made by a judge agent, and any "can't go further" call is reviewed once more by a referee agent.
 
 ## What's inside?
 
@@ -24,7 +22,7 @@ It's organized into four families.
 
 | Family | What it does | Entry command |
 |--------|--------------|---------------|
-| **/dev-loop family** | Multi-session development orchestration — lays the work out as a flowchart, then loops research → design → build → review to completion. Each node is delegated to its own session | `/dev` · `/dev-loop` · `/impl` · `/adr` |
+| **/dev family** | Multi-session development orchestration — lays the work out as a flowchart, then runs research → design → build → review. Parallel boxes go to their own sessions, and it can optionally auto-continue to a stop condition | `/dev` · `/impl` · `/adr` |
 | **/prp family** | A one-shot pipeline from requirements → plan → implementation → PR | `/prp-prd` · `/prp-plan` · `/prp-implement` · `/prp-pr` · `/prp-commit` |
 | **Memory family** | Auto-memory that lets skills/agents remember what they learned for the next run | `/add-memory` |
 | **Other** | Conditional rule-trigger examples, etc. | `triggers_CLAUDE.md` |
@@ -45,11 +43,11 @@ triggers_CLAUDE.md into my global ~/.claude/CLAUDE.md . Tell me first if
 anything would collide with what I already have.
 ```
 
-**Install one family only** (e.g. just the `/dev-loop` family)
+**Install one family only** (e.g. just the `/dev` family)
 
 ```
-Port only the /dev-loop family from JKBuilders into my system.
-Install skills/dev · dev-loop · impl · adr · tdd-workflow and the
+Port only the /dev family from JKBuilders into my system.
+Install skills/dev · impl · adr · tdd-workflow and the
 agents/* they spawn, plus rules/ · rules-detail/ · scripts/ , under my
 ~/.claude/ , and merge the triggers in triggers_CLAUDE.md into my global
 CLAUDE.md . Then walk me through the README's "Required setup" section.
@@ -57,7 +55,7 @@ CLAUDE.md . Then walk me through the README's "Required setup" section.
 
 ## Required setup
 
-The `/dev-loop` family needs both of the items below. The other families (`/prp`, memory) only need item 1.
+The `/dev` family's parallel delegation and auto-continue need both of the items below. The other families (`/prp`, memory) only need item 1.
 
 ### 1. settings.json
 
@@ -74,15 +72,11 @@ The `/dev-loop` family needs both of the items below. The other families (`/prp`
 
 - **`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`** — enables nested spawning (a sub-agent spawning another sub-agent). Without it, `/impl`'s chain and `synthesizer`'s convergence stall.
 - **`worktree.baseRef`** — the base commit parallel tracks branch their isolated worktrees from.
-- **`statusLine`** — not decoration, but **`/dev`'s instrumentation**. It is where a session reads its own context usage; without it the stop-and-hand-off point is missed. If you already run your own status line script, graft the four lines described as **method ②** in the header of `scripts/status-writer.py`.
+- **`statusLine`** — not decoration, but **`/dev`'s instrumentation**. It is where a session reads its own context usage; without it the stop-and-hand-off point, and auto-continue's round switch, are missed. If you already run your own status line script, graft the four lines described as **method ②** in the header of `scripts/status-writer.py`.
 
-### 2. tmux · jq
+### 2. tmux
 
-`/dev-loop` launches both the commander and the worker sessions through tmux. Without `tmux` no session comes up. `jq` is used to tally the incidents unattended sessions log (`scripts/dl-incident.sh`); without it only that tally comes back empty and the loop still runs. `/dev` and `/impl` on their own need neither.
-
-### 3. Accept the project trust prompt
-
-An unattended session cannot get past the "do you trust this folder?" dialog Claude Code shows on first run. `/dev-loop` checks for that acceptance before spawning and hands back to you rather than spawning without it. **Run `claude` once in the target project yourself and accept.**
+`/dev` launches the worker sessions for parallel implementation boxes through tmux, and auto-continue only turns on inside a tmux window. Without `tmux`, parallel boxes can't be handed to separate sessions and the main session handles them itself, and auto-continue stays off. `/impl` on its own doesn't need it.
 
 ## Things to watch out for
 
@@ -91,7 +85,7 @@ An unattended session cannot get past the "do you trust this folder?" dialog Cla
 - **Mind the model pins.** Each agent's frontmatter pins a `model: opus / sonnet / fable`. If your plan can't access that model, adjust it.
 - **Auto-memory only works where the block is installed.** Attach it to the skills/agents you want via `/add-memory`.
 - **The `/prp` family writes to `.claude/PRPs/`** — requirements, plans, and reports accumulate there.
-- **`/dev-loop` runs in screen mode only in this distribution.** Upstream it can also report progress and take instructions over a Telegram channel, but that piece is a fork of someone else's plugin and is not redistributed here. So every startup prints one warning that the channel is unavailable and it is falling back to screen mode — **that is expected, and the loop runs on screen exactly as it should.**
+- **Auto-continue runs without permission prompts.** So it doesn't stall while nobody is watching, it launches worker sessions with permission checks skipped. Only turn it on in repositories you trust.
 
 ## Credits
 
